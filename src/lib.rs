@@ -366,17 +366,21 @@ impl Tokenizer {
                             // SPEC: Emit the current tag token.
                             self.emit_current_token();
                         }
-                        // FIXME: Implement ASCII upper alpha
                         null!() => todo!(),
                         eof!() => todo!(),
                         anything_else!(character) => {
+                            // SPEC: ASCII upper alpha
+                            //          Append the lowercase version of the current input character
+                            //          (add 0x0020 to the character's code point)
+                            //          to the current tag token's tag name.
+                            let character = character.to_ascii_lowercase();
                             // SPEC: Append the current input character to the current tag token's tag name.
                             match &mut self.current_token {
                                 Some(Token::StartTag { name, .. }) => {
-                                    name.push(character);
+                                    name.push(character.to_ascii_lowercase());
                                 }
                                 Some(Token::EndTag { name, .. }) => {
-                                    name.push(character);
+                                    name.push(character.to_ascii_lowercase());
                                 }
                                 _ => {}
                             }
@@ -443,9 +447,14 @@ impl Tokenizer {
                             // SPEC: Switch to the before attribute value state.
                             self.switch_to(State::BeforeAttributeValue);
                         }
-                        // FIXME: Implement ASCII upper alpha
                         null!() => todo!(),
                         anything_else!(character) => {
+                            // SPEC: ASCII upper alpha
+                            //          Append the lowercase version of the current input character
+                            //          (add 0x0020 to the character's code point)
+                            //          to the current attribute's name.
+                            let character = character.to_ascii_lowercase();
+
                             if let '"' | '\'' | '<' = character {
                                 // FIXME Implement
                                 // SPEC: This is an unexpected-character-in-attribute-name parse error. Treat it as per the "anything else" entry below.
@@ -722,10 +731,15 @@ impl Tokenizer {
                             self.emit_current_token();
                             continue;
                         }
-                        // FIXME: Implement ASCII upper alpha
                         null!() => todo!(),
                         eof!() => todo!(),
                         anything_else!(character) => {
+                            // SPEC: ASCII upper alpha
+                            //          Append the lowercase version of the current input character
+                            //          (add 0x0020 to the character's code point)
+                            //          to the current DOCTYPE token's name.
+                            let character = character.to_ascii_lowercase();
+
                             // SPEC: Append the current input character to the current DOCTYPE token's name.
                             if let Some(Token::Doctype {
                                 name: Some(name), ..
