@@ -280,12 +280,18 @@ impl<'a> Tokenizer<'a> {
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
+        macro_rules! on {
+            ($c:expr) => {
+                Some($c)
+            };
+        }
+
         macro_rules! whitespace {
             () => {
-                Some('\t') | // Tab
-                Some('\n') | // Line Feed
-                Some('\u{000c}') | // Form Feed
-                Some(' ') // Space
+                on!('\t') | // Tab
+                on!('\n') | // Line Feed
+                on!('\u{000c}') | // Form Feed
+                on!(' ') // Space
             };
             ($c:ident) => {
                 Some($c @ '\t') | // Tab
@@ -303,7 +309,7 @@ impl<'a> Tokenizer<'a> {
 
         macro_rules! null {
             () => {
-                Some('\u{0000}')
+                on!('\u{0000}')
             };
         }
 
@@ -454,13 +460,13 @@ impl<'a> Tokenizer<'a> {
                 State::Data => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        Some('&') => {
+                        on!('&') => {
                             // SPEC: Set the return state to the data state.
                             self.set_return_state(State::Data);
                             // SPEC: Switch to the character reference state.
                             self.switch_to(State::CharacterReference);
                         }
-                        Some('<') => {
+                        on!('<') => {
                             // SPEC: Switch to the tag open state.
                             self.switch_to(State::TagOpen)
                         }
@@ -483,12 +489,12 @@ impl<'a> Tokenizer<'a> {
                 State::TagOpen => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        Some('!') => {
+                        on!('!') => {
                             // SPEC: Switch to the markup declaration open state.
                             self.switch_to(State::MarkupDeclarationOpen);
                             continue;
                         }
-                        Some('/') => {
+                        on!('/') => {
                             // SPEC: Switch to the end tag open state.
                             self.switch_to(State::EndTagOpen);
                         }
@@ -503,7 +509,7 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Reconsume in the tag name state.
                             self.reconsume_in(State::TagName);
                         }
-                        Some('?') => todo!(),
+                        on!('?') => todo!(),
                         eof!() => todo!(),
                         anything_else!() => todo!(),
                     }
@@ -522,7 +528,7 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Reconsume in the tag name state.
                             self.reconsume_in(State::TagName);
                         }
-                        Some('>') => todo!(),
+                        on!('>') => todo!(),
                         eof!() => todo!(),
                         anything_else!() => todo!(),
                     }
@@ -535,11 +541,11 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the before attribute name state.
                             self.switch_to(State::BeforeAttributeName);
                         }
-                        Some('/') => {
+                        on!('/') => {
                             // SPEC: Switch to the self-closing start tag state.
                             self.switch_to(State::SelfClosingStartTag)
                         }
-                        Some('>') => {
+                        on!('>') => {
                             // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
                             // SPEC: Emit the current tag token.
@@ -597,11 +603,11 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Ignore the character
                             continue;
                         }
-                        Some('/') | Some('>') | eof!() => {
+                        on!('/') | on!('>') | eof!() => {
                             // SPEC: Reconsume in the after attribute name state.
                             self.reconsume_in(State::AfterAttributeName);
                         }
-                        Some('=') => todo!(),
+                        on!('=') => todo!(),
                         anything_else!() => {
                             // SPEC: Start a new attribute in the current tag token.
                             self.set_current_attribute(Attribute {
@@ -618,11 +624,11 @@ impl<'a> Tokenizer<'a> {
                 State::AttributeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() | Some('/') | Some('>') | eof!() => {
+                        whitespace!() | on!('/') | on!('>') | eof!() => {
                             // SPEC: Reconsume in the after attribute name state.
                             self.reconsume_in(State::AfterAttributeName);
                         }
-                        Some('=') => {
+                        on!('=') => {
                             // SPEC: Switch to the before attribute value state.
                             self.switch_to(State::BeforeAttributeValue);
                         }
@@ -654,15 +660,15 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Ignore the character
                             continue;
                         }
-                        Some('/') => {
+                        on!('/') => {
                             // SPEC: Switch to the self-closing start tag state.
                             self.switch_to(State::SelfClosingStartTag)
                         }
-                        Some('=') => {
+                        on!('=') => {
                             // SPEC: Emit the current tag token.
                             self.switch_to(State::BeforeAttributeValue)
                         }
-                        Some('>') => {
+                        on!('>') => {
                             // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
                             // SPEC: Emit the current tag token.
@@ -689,15 +695,15 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Ignore the character
                             continue;
                         }
-                        Some('"') => {
+                        on!('"') => {
                             // SPEC: Switch to the attribute value (double-quoted) state.
                             self.switch_to(State::AttributeValueDoubleQuoted);
                         }
-                        Some('\'') => {
+                        on!('\'') => {
                             // SPEC: Switch to the attribute value (double-quoted) state.
                             self.switch_to(State::AttributeValueSingleQuoted);
                         }
-                        Some('>') => todo!(),
+                        on!('>') => todo!(),
                         anything_else!() => {
                             // SPEC: Reconsume in the attribute value (unquoted) state.
                             self.reconsume_in(State::AttributeValueUnquoted);
@@ -709,11 +715,11 @@ impl<'a> Tokenizer<'a> {
                 State::AttributeValueDoubleQuoted => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        Some('"') => {
+                        on!('"') => {
                             // SPEC: Switch to the after attribute value (quoted) state.
                             self.switch_to(State::AfterAttributeValueQuoted);
                         }
-                        Some('&') => {
+                        on!('&') => {
                             // SPEC: Set the return state to the attribute value (double-quoted) state.
                             self.set_return_state(State::AttributeValueDoubleQuoted);
                             // SPEC: Switch to the character reference state.
@@ -733,11 +739,11 @@ impl<'a> Tokenizer<'a> {
                 State::AttributeValueSingleQuoted => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        Some('\'') => {
+                        on!('\'') => {
                             // SPEC: Switch to the after attribute value (quoted) state.
                             self.switch_to(State::AfterAttributeValueQuoted);
                         }
-                        Some('&') => {
+                        on!('&') => {
                             // SPEC: Set the return state to the attribute value (single-quoted) state.
                             self.set_return_state(State::AttributeValueSingleQuoted);
                             // SPEC: Switch to the character reference state.
@@ -761,8 +767,8 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the before attribute name state.
                             self.switch_to(State::BeforeAttributeName);
                         }
-                        Some('&') => todo!(),
-                        Some('>') => {
+                        on!('&') => todo!(),
+                        on!('>') => {
                             // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
                             // SPEC: Emit the current tag token.
@@ -791,11 +797,11 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the before attribute name state.
                             self.switch_to(State::BeforeAttributeName);
                         }
-                        Some('/') => {
+                        on!('/') => {
                             // SPEC: Switch to the self-closing start tag state.
                             self.switch_to(State::SelfClosingStartTag);
                         }
-                        Some('>') => {
+                        on!('>') => {
                             // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
                             // SPEC: Emit the current tag token.
@@ -813,7 +819,7 @@ impl<'a> Tokenizer<'a> {
                 State::SelfClosingStartTag => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        Some('>') => {
+                        on!('>') => {
                             // SPEC: Set the self-closing flag of the current tag token.
                             if let Some(Token::StartTag { self_closing, .. }) =
                                 &mut self.current_token
@@ -862,7 +868,7 @@ impl<'a> Tokenizer<'a> {
                             self.switch_to(State::BeforeDoctypeName);
                             continue;
                         }
-                        Some('>') => todo!(),
+                        on!('>') => todo!(),
                         eof!() => todo!(),
                         anything_else!() => todo!(),
                     }
@@ -877,7 +883,7 @@ impl<'a> Tokenizer<'a> {
                         }
                         // FIXME: Implement ASCII upper alpha
                         null!() => todo!(),
-                        Some('>') => todo!(),
+                        on!('>') => todo!(),
                         eof!() => {
                             // FIXME: Implement
                             // SPEC: This is an eof-in-doctype parse error.
@@ -917,7 +923,7 @@ impl<'a> Tokenizer<'a> {
                             self.switch_to(State::AfterDoctypeName);
                             continue;
                         }
-                        Some('>') => {
+                        on!('>') => {
                             // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
                             // SPEC: Emit the current DOCTYPE token.
@@ -973,7 +979,7 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Reconsume in the named character reference state.
                             self.reconsume_in(State::NamedCharacterReference);
                         }
-                        Some('#') => {
+                        on!('#') => {
                             // SPEC: Append the current input character to the temporary buffer.
                             self.temporary_buffer
                                 .push(self.current_input_character.unwrap());
@@ -1054,7 +1060,7 @@ impl<'a> Tokenizer<'a> {
                                 self.emit_token(Token::Character { data: character });
                             }
                         }
-                        Some(';') => {
+                        on!(';') => {
                             // SPEC: This is an unknown-named-character-reference parse error.
                             // SPEC: Reconsume in the return state.
                             self.reconsume_in_return_state();
@@ -1133,7 +1139,7 @@ impl<'a> Tokenizer<'a> {
                             //       to the character reference code.
                             self.character_reference_code += character as u32 - 0x0057;
                         }
-                        Some(';') => {
+                        on!(';') => {
                             // SPEC: Switch to the numeric character reference end state.
                             self.switch_to(State::NumericCharacterReferenceEnd);
                         }
