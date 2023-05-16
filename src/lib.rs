@@ -182,9 +182,8 @@ impl Tokenizer {
     fn emit_token(&mut self, token: Token) {
         self.tokens.push(token.clone());
 
-        match token {
-            Token::EndOfFile => self.eof_emitted = true,
-            _ => {}
+        if token == Token::EndOfFile {
+            self.eof_emitted = true
         }
     }
 
@@ -194,9 +193,8 @@ impl Tokenizer {
 
     fn push_current_attribute_to_current_tag(&mut self) {
         if let Some(current_attribute) = self.current_attribute.clone() {
-            match &mut self.current_token {
-                Some(Token::StartTag { attributes, .. }) => attributes.push(current_attribute),
-                _ => {}
+            if let Some(Token::StartTag { attributes, .. }) = &mut self.current_token {
+                attributes.push(current_attribute)
             }
             self.current_attribute = None
         }
@@ -416,13 +414,11 @@ impl Tokenizer {
                         eof!() => todo!(),
                         anything_else!(character) => {
                             // Append the current input character to the current DOCTYPE token's name.
-                            match &mut self.current_token {
-                                Some(Token::Doctype { name, .. }) => {
-                                    if let Some(name) = name {
-                                        name.push(character)
-                                    }
-                                }
-                                _ => {}
+                            if let Some(Token::Doctype {
+                                name: Some(name), ..
+                            }) = &mut self.current_token
+                            {
+                                name.push(character)
                             }
                         }
                     }
@@ -507,9 +503,8 @@ impl Tokenizer {
                             }
 
                             // Append the current input character to the current attribute's name.
-                            match &mut self.current_attribute {
-                                Some(Attribute { name, .. }) => name.push(character),
-                                _ => {}
+                            if let Some(Attribute { name, .. }) = &mut self.current_attribute {
+                                name.push(character)
                             }
                         }
                     }
@@ -555,9 +550,10 @@ impl Tokenizer {
                     match self.current_input_character {
                         Some('>') => {
                             // Set the self-closing flag of the current tag token.
-                            match &mut self.current_token {
-                                Some(Token::StartTag { self_closing, .. }) => *self_closing = true,
-                                _ => {}
+                            if let Some(Token::StartTag { self_closing, .. }) =
+                                &mut self.current_token
+                            {
+                                *self_closing = true
                             }
                             // Emit the current tag token.
                             self.emit_current_token();
@@ -624,9 +620,8 @@ impl Tokenizer {
                         eof!() => todo!(),
                         anything_else!(character) => {
                             // Append the current input character to the current attribute's value.
-                            match &mut self.current_attribute {
-                                Some(Attribute { value, .. }) => value.push(character),
-                                _ => {}
+                            if let Some(Attribute { value, .. }) = &mut self.current_attribute {
+                                value.push(character)
                             }
                         }
                     }
@@ -644,9 +639,8 @@ impl Tokenizer {
                         eof!() => todo!(),
                         anything_else!(character) => {
                             // Append the current input character to the current attribute's value.
-                            match &mut self.current_attribute {
-                                Some(Attribute { value, .. }) => value.push(character),
-                                _ => {}
+                            if let Some(Attribute { value, .. }) = &mut self.current_attribute {
+                                value.push(character)
                             }
                         }
                     }
@@ -696,9 +690,8 @@ impl Tokenizer {
                             }
 
                             // Append the current input character to the current attribute's value.
-                            match &mut self.current_attribute {
-                                Some(Attribute { value, .. }) => value.push(character),
-                                _ => {}
+                            if let Some(Attribute { value, .. }) = &mut self.current_attribute {
+                                value.push(character)
                             }
                         }
                     }
