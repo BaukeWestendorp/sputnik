@@ -243,7 +243,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn reconsume_and_switch_to(&mut self, state: State) {
+    fn reconsume_in(&mut self, state: State) {
         if let Some(insertion_point) = self.insertion_point {
             self.insertion_point = Some(insertion_point - 1);
         }
@@ -252,7 +252,7 @@ impl<'a> Tokenizer<'a> {
 
     fn reconsume_in_return_state(&mut self) {
         if let Some(return_state) = self.return_state {
-            self.reconsume_and_switch_to(return_state);
+            self.reconsume_in(return_state);
             self.return_state = None;
         }
     }
@@ -501,7 +501,7 @@ impl<'a> Tokenizer<'a> {
                                 attributes: Vec::new(),
                             });
                             // SPEC: Reconsume in the tag name state.
-                            self.reconsume_and_switch_to(State::TagName);
+                            self.reconsume_in(State::TagName);
                         }
                         Some('?') => todo!(),
                         eof!() => todo!(),
@@ -520,7 +520,7 @@ impl<'a> Tokenizer<'a> {
                                 attributes: Vec::new(),
                             });
                             // SPEC: Reconsume in the tag name state.
-                            self.reconsume_and_switch_to(State::TagName);
+                            self.reconsume_in(State::TagName);
                         }
                         Some('>') => todo!(),
                         eof!() => todo!(),
@@ -599,7 +599,7 @@ impl<'a> Tokenizer<'a> {
                         }
                         Some('/') | Some('>') | eof!() => {
                             // SPEC: Reconsume in the after attribute name state.
-                            self.reconsume_and_switch_to(State::AfterAttributeName);
+                            self.reconsume_in(State::AfterAttributeName);
                         }
                         Some('=') => todo!(),
                         anything_else!() => {
@@ -610,7 +610,7 @@ impl<'a> Tokenizer<'a> {
                                 value: String::new(),
                             });
                             // SPEC: Reconsume in the attribute name state.
-                            self.reconsume_and_switch_to(State::AttributeName);
+                            self.reconsume_in(State::AttributeName);
                         }
                     }
                 }
@@ -620,7 +620,7 @@ impl<'a> Tokenizer<'a> {
                     match self.current_input_character {
                         whitespace!() | Some('/') | Some('>') | eof!() => {
                             // SPEC: Reconsume in the after attribute name state.
-                            self.reconsume_and_switch_to(State::AfterAttributeName);
+                            self.reconsume_in(State::AfterAttributeName);
                         }
                         Some('=') => {
                             // SPEC: Switch to the before attribute value state.
@@ -677,7 +677,7 @@ impl<'a> Tokenizer<'a> {
                                 value: String::new(),
                             });
                             // SPEC: Reconsume in the attribute name state.
-                            self.reconsume_and_switch_to(State::AttributeName);
+                            self.reconsume_in(State::AttributeName);
                         }
                     }
                 }
@@ -700,7 +700,7 @@ impl<'a> Tokenizer<'a> {
                         Some('>') => todo!(),
                         anything_else!() => {
                             // SPEC: Reconsume in the attribute value (unquoted) state.
-                            self.reconsume_and_switch_to(State::AttributeValueUnquoted);
+                            self.reconsume_in(State::AttributeValueUnquoted);
                         }
                         eof!() => {}
                     }
@@ -805,7 +805,7 @@ impl<'a> Tokenizer<'a> {
                         anything_else!() => {
                             // SPEC: This is a missing-whitespace-between-attributes parse error.
                             //       Reconsume in the before attribute name state.
-                            self.reconsume_and_switch_to(State::BeforeAttributeName);
+                            self.reconsume_in(State::BeforeAttributeName);
                         }
                     }
                 }
@@ -971,7 +971,7 @@ impl<'a> Tokenizer<'a> {
                     match self.current_input_character {
                         ascii_alphanumeric!() => {
                             // SPEC: Reconsume in the named character reference state.
-                            self.reconsume_and_switch_to(State::NamedCharacterReference);
+                            self.reconsume_in(State::NamedCharacterReference);
                         }
                         Some('#') => {
                             // SPEC: Append the current input character to the temporary buffer.
@@ -1081,7 +1081,7 @@ impl<'a> Tokenizer<'a> {
                         }
                         anything_else!() | None => {
                             // SPEC: Reconsume in the decimal character reference start state.
-                            self.reconsume_and_switch_to(State::DecimalCharacterReferenceStart);
+                            self.reconsume_in(State::DecimalCharacterReferenceStart);
                         }
                     }
                 }
@@ -1091,7 +1091,7 @@ impl<'a> Tokenizer<'a> {
                     match self.current_input_character {
                         ascii_hex_digit!() => {
                             // SPEC: Reconsume in the hexadecimal character reference state.
-                            self.reconsume_and_switch_to(State::HexadecimalCharacterReference);
+                            self.reconsume_in(State::HexadecimalCharacterReference);
                         }
                         anything_else!() | None => {
                             // SPEC: This is an absence-of-digits-in-numeric-character-reference parse error.
@@ -1140,7 +1140,7 @@ impl<'a> Tokenizer<'a> {
                         anything_else!() | None => {
                             // SPEC: This is a missing-semicolon-after-character-reference parse error.
                             // SPEC: Reconsume in the numeric character reference end state.
-                            self.reconsume_and_switch_to(State::NumericCharacterReferenceEnd);
+                            self.reconsume_in(State::NumericCharacterReferenceEnd);
                         }
                     }
                 }
