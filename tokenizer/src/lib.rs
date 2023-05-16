@@ -267,8 +267,6 @@ impl Tokenizer {
         }
 
         loop {
-            eprintln!("[{:?}] {:?}", self.state, self.current_input_character);
-
             if self.eof_emitted {
                 break;
             }
@@ -779,25 +777,5 @@ impl Tokenizer {
         }
 
         self.tokens.clone()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn tokenize() {
-        use crate::*;
-
-        let html = include_str!("test.html");
-        let mut tokenizer = Tokenizer::new(html);
-        let tokens = tokenizer.tokenize();
-
-        eprintln!("--------- TAGS ---------");
-        for token in tokens.iter() {
-            eprintln!("{:?}", token);
-        }
-        eprintln!("------------------------");
-
-        assert!(false);
     }
 }

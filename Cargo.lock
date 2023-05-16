@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "sputnik"
+name = "tokenizer"
 version = "0.1.0"
