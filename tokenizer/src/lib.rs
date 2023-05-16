@@ -1026,7 +1026,7 @@ impl<'a> Tokenizer<'a> {
                         // SPEC: If the character reference was consumed as part of an attribute,
                         if self.current_attribute.is_some() {
                             // SPEC: and the last character matched is not a U+003B SEMICOLON character (;),
-                            if self.temporary_buffer.chars().last() != Some(';') {
+                            if !self.temporary_buffer.ends_with(';') {
                                 // SPEC: and the next input character is either a U+003D EQUALS SIGN character (=)
                                 //       or an ASCII alphanumeric, then, for historical reasons,
                                 if let Some('=') | ascii_alphanumeric!() =
