@@ -296,6 +296,10 @@ impl Tokenizer {
                         }
                     }
                 }
+                State::RcData => todo!(),
+                State::RawText => todo!(),
+                State::ScriptData => todo!(),
+                State::PlainText => todo!(),
                 // https://html.spec.whatwg.org/multipage/parsing.html#tag-open-state
                 State::TagOpen => {
                     self.consume_next_input_character();
@@ -325,102 +329,23 @@ impl Tokenizer {
                         anything_else!(_) => todo!(),
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state
-                State::MarkupDeclarationOpen => {
-                    // FIXME: Fix spec comments
-                    // FIXME: Implement --
-                    if self.next_characters_are_ascii_case_insensitive("DOCTYPE") {
-                        self.consume_characters("DOCTYPE");
-                        self.switch_to(State::Doctype);
-                        continue;
-                    }
-                    // FIXME: Implement [CDATA[
-                    // FIXME: Anything else
-                    todo!()
-                }
-                // https://html.spec.whatwg.org/multipage/parsing.html#doctype-state
-                State::Doctype => {
+                // https://html.spec.whatwg.org/multipage/parsing.html#end-tag-open-state
+                State::EndTagOpen => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() => {
-                            // Switch to the before DOCTYPE name state.
-                            self.switch_to(State::BeforeDoctypeName);
-                            continue;
+                        ascii_alpha!() => {
+                            // Create a new end tag token, set its tag name to the empty string.
+                            self.set_current_token(Token::EndTag {
+                                name: String::new(),
+                                self_closing: false,
+                                attributes: Vec::new(),
+                            });
+                            // Reconsume in the tag name state.
+                            self.reconsume_and_switch_to(State::TagName);
                         }
                         Some('>') => todo!(),
                         eof!() => todo!(),
                         anything_else!(_) => todo!(),
-                    }
-                }
-                // https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-name-state
-                State::BeforeDoctypeName => {
-                    self.consume_next_input_character();
-                    match self.current_input_character {
-                        whitespace!() => {
-                            // Ignore the character.
-                            continue;
-                        }
-                        // FIXME: Implement ASCII upper alpha
-                        null!() => todo!(),
-                        Some('>') => todo!(),
-                        eof!() => {
-                            // FIXME: Implement eof-in-doctype parser error.
-                            // This is an eof-in-doctype parse error.
-
-                            // Create a new DOCTYPE token.
-                            // Emit the current token.
-                            self.emit_token(Token::Doctype {
-                                name: None,
-                                public_identifier: None,
-                                system_identifier: None,
-                                // Set its force-quirks flag to on.
-                                force_quirks: true,
-                            });
-                            // Emit an end-of-file token.
-                            self.emit_token(Token::EndOfFile);
-                        }
-                        anything_else!(character) => {
-                            // Create a new DOCTYPE token.
-                            self.set_current_token(Token::Doctype {
-                                // Set the token's name to the current input character.
-                                name: Some(String::from(character)),
-                                public_identifier: None,
-                                system_identifier: None,
-                                force_quirks: false,
-                            });
-                            // Switch to the DOCTYPE name state.
-                            self.switch_to(State::DoctypeName);
-                        }
-                    }
-                }
-                // https://html.spec.whatwg.org/multipage/parsing.html#doctype-name-state
-                State::DoctypeName => {
-                    self.consume_next_input_character();
-                    match self.current_input_character {
-                        whitespace!() => {
-                            // Switch to the after DOCTYPE name state.
-                            self.switch_to(State::AfterDoctypeName);
-                            continue;
-                        }
-                        Some('>') => {
-                            // Switch to the data state.
-                            self.switch_to(State::Data);
-                            // Emit the current DOCTYPE token.
-                            self.emit_current_token();
-                            continue;
-                        }
-                        // FIXME: Implement ASCII upper alpha
-                        null!() => todo!(),
-                        eof!() => todo!(),
-                        anything_else!(character) => {
-                            // Append the current input character to the current DOCTYPE token's name.
-                            if let Some(Token::Doctype {
-                                name: Some(name), ..
-                            }) = &mut self.current_token
-                            {
-                                name.push(character)
-                            }
-                        }
                     }
                 }
                 // https://html.spec.whatwg.org/multipage/parsing.html#tag-name-state
@@ -458,6 +383,29 @@ impl Tokenizer {
                         }
                     }
                 }
+                State::RcDataLessThanSign => todo!(),
+                State::RcDataEndTagOpen => todo!(),
+                State::RcDataEndTagName => todo!(),
+                State::RawTextLessThanSign => todo!(),
+                State::RawTextEndTagOpen => todo!(),
+                State::RawTextEndTagName => todo!(),
+                State::ScriptDataLessThanSign => todo!(),
+                State::ScriptDataEndTagOpen => todo!(),
+                State::ScriptDataEndTagName => todo!(),
+                State::ScriptDataEscapeStart => todo!(),
+                State::ScriptDataEscapeStartDash => todo!(),
+                State::ScriptDataEscaped => todo!(),
+                State::ScriptDataEscapedDash => todo!(),
+                State::ScriptDataEscapedDashDash => todo!(),
+                State::ScriptDataEscapedLessThanSign => todo!(),
+                State::ScriptDataEscapedEndTagOpen => todo!(),
+                State::ScriptDataEscapedEndTagName => todo!(),
+                State::ScriptDataDoubleEscapeStart => todo!(),
+                State::ScriptDataDoubleEscaped => todo!(),
+                State::ScriptDataDoubleEscapedDash => todo!(),
+                State::ScriptDataDoubleEscapedDashDash => todo!(),
+                State::ScriptDataDoubleEscapedLessThanSign => todo!(),
+                State::ScriptDataDoubleEscapeEnd => todo!(),
                 // https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-name-state
                 State::BeforeAttributeName => {
                     self.consume_next_input_character();
@@ -544,45 +492,6 @@ impl Tokenizer {
                         }
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#self-closing-start-tag-state
-                State::SelfClosingStartTag => {
-                    self.consume_next_input_character();
-                    match self.current_input_character {
-                        Some('>') => {
-                            // Set the self-closing flag of the current tag token.
-                            if let Some(Token::StartTag { self_closing, .. }) =
-                                &mut self.current_token
-                            {
-                                *self_closing = true
-                            }
-                            // Emit the current tag token.
-                            self.emit_current_token();
-                            // Switch to the data state.
-                            self.switch_to(State::Data);
-                        }
-                        eof!() => todo!(),
-                        anything_else!(_) => todo!(),
-                    }
-                }
-                // https://html.spec.whatwg.org/multipage/parsing.html#end-tag-open-state
-                State::EndTagOpen => {
-                    self.consume_next_input_character();
-                    match self.current_input_character {
-                        ascii_alpha!() => {
-                            // Create a new end tag token, set its tag name to the empty string.
-                            self.set_current_token(Token::EndTag {
-                                name: String::new(),
-                                self_closing: false,
-                                attributes: Vec::new(),
-                            });
-                            // Reconsume in the tag name state.
-                            self.reconsume_and_switch_to(State::TagName);
-                        }
-                        Some('>') => todo!(),
-                        eof!() => todo!(),
-                        anything_else!(_) => todo!(),
-                    }
-                }
                 // https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-value-state
                 State::BeforeAttributeValue => {
                     self.consume_next_input_character();
@@ -645,28 +554,6 @@ impl Tokenizer {
                         }
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-value-(quoted)-state
-                State::AfterAttributeValueQuoted => {
-                    self.consume_next_input_character();
-                    match self.current_input_character {
-                        whitespace!() => {
-                            // Switch to the before attribute name state.
-                            self.switch_to(State::BeforeAttributeName);
-                        }
-                        Some('/') => {
-                            // Switch to the self-closing start tag state.
-                            self.switch_to(State::SelfClosingStartTag);
-                        }
-                        Some('>') => {
-                            // Switch to the data state.
-                            self.switch_to(State::Data);
-                            // Emit the current tag token.
-                            self.emit_current_token();
-                        }
-                        eof!() => todo!(),
-                        anything_else!(_) => todo!(),
-                    }
-                }
                 // https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(unquoted)-state
                 State::AttributeValueUnquoted => {
                     self.consume_next_input_character();
@@ -696,8 +583,182 @@ impl Tokenizer {
                         }
                     }
                 }
-                // Unimplemented state.
-                _ => todo!("state: {:?}", self.state),
+                // https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-value-(quoted)-state
+                State::AfterAttributeValueQuoted => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        whitespace!() => {
+                            // Switch to the before attribute name state.
+                            self.switch_to(State::BeforeAttributeName);
+                        }
+                        Some('/') => {
+                            // Switch to the self-closing start tag state.
+                            self.switch_to(State::SelfClosingStartTag);
+                        }
+                        Some('>') => {
+                            // Switch to the data state.
+                            self.switch_to(State::Data);
+                            // Emit the current tag token.
+                            self.emit_current_token();
+                        }
+                        eof!() => todo!(),
+                        anything_else!(_) => todo!(),
+                    }
+                }
+                // https://html.spec.whatwg.org/multipage/parsing.html#self-closing-start-tag-state
+                State::SelfClosingStartTag => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        Some('>') => {
+                            // Set the self-closing flag of the current tag token.
+                            if let Some(Token::StartTag { self_closing, .. }) =
+                                &mut self.current_token
+                            {
+                                *self_closing = true
+                            }
+                            // Emit the current tag token.
+                            self.emit_current_token();
+                            // Switch to the data state.
+                            self.switch_to(State::Data);
+                        }
+                        eof!() => todo!(),
+                        anything_else!(_) => todo!(),
+                    }
+                }
+                State::BogusComment => todo!(),
+                // https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state
+                State::MarkupDeclarationOpen => {
+                    // FIXME: Fix spec comments
+                    // FIXME: Implement --
+                    if self.next_characters_are_ascii_case_insensitive("DOCTYPE") {
+                        self.consume_characters("DOCTYPE");
+                        self.switch_to(State::Doctype);
+                        continue;
+                    }
+                    // FIXME: Implement [CDATA[
+                    // FIXME: Anything else
+                    todo!()
+                }
+                State::CommentStart => todo!(),
+                State::CommentStartDash => todo!(),
+                State::Comment => todo!(),
+                State::CommentLessThanSign => todo!(),
+                State::CommentLessThanSignBang => todo!(),
+                State::CommentLessThanSignBangDash => todo!(),
+                State::CommentLessThanSignBangDashDash => todo!(),
+                State::CommentEndDash => todo!(),
+                State::CommentEnd => todo!(),
+                State::CommentEndBang => todo!(),
+                // https://html.spec.whatwg.org/multipage/parsing.html#doctype-state
+                State::Doctype => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        whitespace!() => {
+                            // Switch to the before DOCTYPE name state.
+                            self.switch_to(State::BeforeDoctypeName);
+                            continue;
+                        }
+                        Some('>') => todo!(),
+                        eof!() => todo!(),
+                        anything_else!(_) => todo!(),
+                    }
+                }
+                // https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-name-state
+                State::BeforeDoctypeName => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        whitespace!() => {
+                            // Ignore the character.
+                            continue;
+                        }
+                        // FIXME: Implement ASCII upper alpha
+                        null!() => todo!(),
+                        Some('>') => todo!(),
+                        eof!() => {
+                            // FIXME: Implement eof-in-doctype parser error.
+                            // This is an eof-in-doctype parse error.
+
+                            // Create a new DOCTYPE token.
+                            // Emit the current token.
+                            self.emit_token(Token::Doctype {
+                                name: None,
+                                public_identifier: None,
+                                system_identifier: None,
+                                // Set its force-quirks flag to on.
+                                force_quirks: true,
+                            });
+                            // Emit an end-of-file token.
+                            self.emit_token(Token::EndOfFile);
+                        }
+                        anything_else!(character) => {
+                            // Create a new DOCTYPE token.
+                            self.set_current_token(Token::Doctype {
+                                // Set the token's name to the current input character.
+                                name: Some(String::from(character)),
+                                public_identifier: None,
+                                system_identifier: None,
+                                force_quirks: false,
+                            });
+                            // Switch to the DOCTYPE name state.
+                            self.switch_to(State::DoctypeName);
+                        }
+                    }
+                }
+                // https://html.spec.whatwg.org/multipage/parsing.html#doctype-name-state
+                State::DoctypeName => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        whitespace!() => {
+                            // Switch to the after DOCTYPE name state.
+                            self.switch_to(State::AfterDoctypeName);
+                            continue;
+                        }
+                        Some('>') => {
+                            // Switch to the data state.
+                            self.switch_to(State::Data);
+                            // Emit the current DOCTYPE token.
+                            self.emit_current_token();
+                            continue;
+                        }
+                        // FIXME: Implement ASCII upper alpha
+                        null!() => todo!(),
+                        eof!() => todo!(),
+                        anything_else!(character) => {
+                            // Append the current input character to the current DOCTYPE token's name.
+                            if let Some(Token::Doctype {
+                                name: Some(name), ..
+                            }) = &mut self.current_token
+                            {
+                                name.push(character)
+                            }
+                        }
+                    }
+                }
+                State::AfterDoctypeName => todo!(),
+                State::AfterDoctypePublicKeyword => todo!(),
+                State::BeforeDoctypePublicIdentifier => todo!(),
+                State::DoctypePublicIdentifierDoubleQuoted => todo!(),
+                State::DoctypePublicIdentifierSingleQuoted => todo!(),
+                State::AfterDoctypePublicIdentifier => todo!(),
+                State::BetweenDoctypePublicAndSystemIdentifiers => todo!(),
+                State::AfterDoctypeSystemKeyword => todo!(),
+                State::BeforeDoctypeSystemIdentifier => todo!(),
+                State::DoctypeSystemIdentifierDoubleQuoted => todo!(),
+                State::DoctypeSystemIdentifierSingleQuoted => todo!(),
+                State::AfterDoctypeSystemIdentifier => todo!(),
+                State::BogusDoctype => todo!(),
+                State::CDataSection => todo!(),
+                State::CDataSectionBracket => todo!(),
+                State::CDataSectionEnd => todo!(),
+                State::CharacterReference => todo!(),
+                State::NamedCharacterReference => todo!(),
+                State::AmbiguousAmpersand => todo!(),
+                State::NumericCharacterReference => todo!(),
+                State::HexadecimalCharacterReferenceStart => todo!(),
+                State::DecimalCharacterReferenceStart => todo!(),
+                State::HexadecimalCharacterReference => todo!(),
+                State::DecimalCharacterReference => todo!(),
+                State::NumericCharacterReferenceEnd => todo!(),
             }
         }
 
