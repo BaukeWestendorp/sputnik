@@ -3,5 +3,9 @@
 version = 3
 
 [[package]]
+name = "parser"
+version = "0.1.0"
+
+[[package]]
 name = "tokenizer"
 version = "0.1.0"
