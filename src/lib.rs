@@ -274,22 +274,22 @@ impl Tokenizer {
             }
 
             match self.state {
-                // https://html.spec.whatwg.org/multipage/parsing.html#data-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#data-state
                 State::Data => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         Some('&') => todo!(),
                         Some('<') => {
-                            // Switch to the tag open state.
+                            // SPEC: Switch to the tag open state.
                             self.switch_to(State::TagOpen)
                         }
                         null!() => todo!(),
                         eof!() => {
-                            // Emit an end-of-file token.
+                            // SPEC: Emit an end-of-file token.
                             self.emit_token(Token::EndOfFile);
                         }
                         anything_else!(character) => {
-                            // Emit the current input character as a character token.
+                            // SPEC: Emit the current input character as a character token.
                             self.emit_token(Token::Character {
                                 data: String::from(character),
                             });
@@ -300,28 +300,28 @@ impl Tokenizer {
                 State::RawText => todo!(),
                 State::ScriptData => todo!(),
                 State::PlainText => todo!(),
-                // https://html.spec.whatwg.org/multipage/parsing.html#tag-open-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#tag-open-state
                 State::TagOpen => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         Some('!') => {
-                            // Switch to the markup declaration open state.
+                            // SPEC: Switch to the markup declaration open state.
                             self.switch_to(State::MarkupDeclarationOpen);
                             continue;
                         }
                         Some('/') => {
-                            // Switch to the end tag open state.
+                            // SPEC: Switch to the end tag open state.
                             self.switch_to(State::EndTagOpen);
                         }
                         ascii_alpha!() => {
-                            // Create a new start tag token.
+                            // SPEC: Create a new start tag token.
                             self.set_current_token(Token::StartTag {
-                                // Set its tag name to the empty string.
+                                // SPEC: Set its tag name to the empty string.
                                 name: String::new(),
                                 self_closing: false,
                                 attributes: Vec::new(),
                             });
-                            // Reconsume in the tag name state.
+                            // SPEC: Reconsume in the tag name state.
                             self.reconsume_and_switch_to(State::TagName);
                         }
                         Some('?') => todo!(),
@@ -329,18 +329,18 @@ impl Tokenizer {
                         anything_else!(_) => todo!(),
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#end-tag-open-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#end-tag-open-state
                 State::EndTagOpen => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         ascii_alpha!() => {
-                            // Create a new end tag token, set its tag name to the empty string.
+                            // SPEC: Create a new end tag token, set its tag name to the empty string.
                             self.set_current_token(Token::EndTag {
                                 name: String::new(),
                                 self_closing: false,
                                 attributes: Vec::new(),
                             });
-                            // Reconsume in the tag name state.
+                            // SPEC: Reconsume in the tag name state.
                             self.reconsume_and_switch_to(State::TagName);
                         }
                         Some('>') => todo!(),
@@ -348,29 +348,29 @@ impl Tokenizer {
                         anything_else!(_) => todo!(),
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#tag-name-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#tag-name-state
                 State::TagName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         whitespace!() => {
-                            // Switch to the before attribute name state.
+                            // SPEC: Switch to the before attribute name state.
                             self.switch_to(State::BeforeAttributeName);
                         }
                         Some('/') => {
-                            // Switch to the self-closing start tag state.
+                            // SPEC: Switch to the self-closing start tag state.
                             self.switch_to(State::SelfClosingStartTag)
                         }
                         Some('>') => {
-                            // Switch to the data state.
+                            // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
-                            // Emit the current tag token.
+                            // SPEC: Emit the current tag token.
                             self.emit_current_token();
                         }
                         // FIXME: Implement ASCII upper alpha
                         null!() => todo!(),
                         eof!() => todo!(),
                         anything_else!(character) => {
-                            // Append the current input character to the current tag token's tag name.
+                            // SPEC: Append the current input character to the current tag token's tag name.
                             match &mut self.current_token {
                                 Some(Token::StartTag { name, .. }) => {
                                     name.push(character);
@@ -406,48 +406,49 @@ impl Tokenizer {
                 State::ScriptDataDoubleEscapedDashDash => todo!(),
                 State::ScriptDataDoubleEscapedLessThanSign => todo!(),
                 State::ScriptDataDoubleEscapeEnd => todo!(),
-                // https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-name-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-name-state
                 State::BeforeAttributeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         whitespace!() => {
-                            // Ignore the character
+                            // SPEC: Ignore the character
                             continue;
                         }
                         Some('/') | Some('>') | eof!() => {
-                            // Reconsume in the after attribute name state.
+                            // SPEC: Reconsume in the after attribute name state.
                             self.reconsume_and_switch_to(State::AfterAttributeName);
                         }
                         Some('=') => todo!(),
                         anything_else!(_) => {
-                            // Start a new attribute in the current tag token.
+                            // SPEC: Start a new attribute in the current tag token.
                             self.set_current_attribute(Attribute {
                                 // Set that attribute name and value to the empty string.
                                 name: String::new(),
                                 value: String::new(),
                             });
-                            // Reconsume in the attribute name state.
+                            // SPEC: Reconsume in the attribute name state.
                             self.reconsume_and_switch_to(State::AttributeName);
                         }
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#attribute-name-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#attribute-name-state
                 State::AttributeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         whitespace!() | Some('/') | Some('>') | eof!() => {
-                            // Reconsume in the after attribute name state.
+                            // SPEC: Reconsume in the after attribute name state.
                             self.reconsume_and_switch_to(State::AfterAttributeName);
                         }
                         Some('=') => {
-                            // Switch to the before attribute value state.
+                            // SPEC: Switch to the before attribute value state.
                             self.switch_to(State::BeforeAttributeValue);
                         }
                         // FIXME: Implement ASCII upper alpha
                         null!() => todo!(),
                         anything_else!(character) => {
                             if let '"' | '\'' | '<' = character {
-                                // FIXME IMPLEMENT: This is an unexpected-character-in-attribute-name parse error. Treat it as per the "anything else" entry below.
+                                // FIXME Implement
+                                // SPEC: This is an unexpected-character-in-attribute-name parse error. Treat it as per the "anything else" entry below.
                             }
 
                             // Append the current input character to the current attribute's name.
@@ -457,168 +458,169 @@ impl Tokenizer {
                         }
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-name-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-name-state
                 State::AfterAttributeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         whitespace!() => {
-                            // Ignore the character
+                            // SPEC: Ignore the character
                             continue;
                         }
                         Some('/') => {
-                            // Switch to the self-closing start tag state.
+                            // SPEC: Switch to the self-closing start tag state.
                             self.switch_to(State::SelfClosingStartTag)
                         }
                         Some('=') => {
-                            // Emit the current tag token.
+                            // SPEC: Emit the current tag token.
                             self.switch_to(State::BeforeAttributeValue)
                         }
                         Some('>') => {
-                            // Switch to the data state.
+                            // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
-                            // Emit the current tag token.
+                            // SPEC: Emit the current tag token.
                             self.emit_current_token();
                         }
                         eof!() => todo!(),
                         anything_else!(_) => {
-                            // Start a new attribute in the current tag token.
+                            // SPEC: Start a new attribute in the current tag token.
                             self.set_current_attribute(Attribute {
-                                // Set that attribute name and value to the empty string.
+                                // SPEC: Set that attribute name and value to the empty string.
                                 name: String::new(),
                                 value: String::new(),
                             });
-                            // Reconsume in the attribute name state.
+                            // SPEC: Reconsume in the attribute name state.
                             self.reconsume_and_switch_to(State::AttributeName);
                         }
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-value-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-value-state
                 State::BeforeAttributeValue => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         whitespace!() => {
-                            // Ignore the character
+                            // SPEC: Ignore the character
                             continue;
                         }
                         Some('"') => {
-                            // Switch to the attribute value (double-quoted) state.
+                            // SPEC: Switch to the attribute value (double-quoted) state.
                             self.switch_to(State::AttributeValueDoubleQuoted);
                         }
                         Some('\'') => {
-                            // Switch to the attribute value (double-quoted) state.
+                            // SPEC: Switch to the attribute value (double-quoted) state.
                             self.switch_to(State::AttributeValueSingleQuoted);
                         }
                         Some('>') => todo!(),
                         anything_else!(_) => {
-                            // Reconsume in the attribute value (unquoted) state.
+                            // SPEC: Reconsume in the attribute value (unquoted) state.
                             self.reconsume_and_switch_to(State::AttributeValueUnquoted);
                         }
                         eof!() => {}
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(double-quoted)-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(double-quoted)-state
                 State::AttributeValueDoubleQuoted => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         Some('"') => {
-                            // Switch to the after attribute value (quoted) state.
+                            // SPEC: Switch to the after attribute value (quoted) state.
                             self.switch_to(State::AfterAttributeValueQuoted);
                         }
                         Some('&') => todo!(),
                         null!() => todo!(),
                         eof!() => todo!(),
                         anything_else!(character) => {
-                            // Append the current input character to the current attribute's value.
+                            // SPEC: Append the current input character to the current attribute's value.
                             if let Some(Attribute { value, .. }) = &mut self.current_attribute {
                                 value.push(character)
                             }
                         }
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(single-quoted)-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(single-quoted)-state
                 State::AttributeValueSingleQuoted => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         Some('\'') => {
-                            // Switch to the after attribute value (quoted) state.
+                            // SPEC: Switch to the after attribute value (quoted) state.
                             self.switch_to(State::AfterAttributeValueQuoted);
                         }
                         Some('&') => todo!(),
                         null!() => todo!(),
                         eof!() => todo!(),
                         anything_else!(character) => {
-                            // Append the current input character to the current attribute's value.
+                            // SPEC: Append the current input character to the current attribute's value.
                             if let Some(Attribute { value, .. }) = &mut self.current_attribute {
                                 value.push(character)
                             }
                         }
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(unquoted)-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(unquoted)-state
                 State::AttributeValueUnquoted => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         whitespace!() => {
-                            // Switch to the before attribute name state.
+                            // SPEC: Switch to the before attribute name state.
                             self.switch_to(State::BeforeAttributeName);
                         }
                         Some('&') => todo!(),
                         Some('>') => {
-                            // Switch to the data state.
+                            // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
-                            // Emit the current tag token.
+                            // SPEC: Emit the current tag token.
                             self.emit_current_token();
                         }
                         null!() => todo!(),
                         eof!() => todo!(),
                         anything_else!(character) => {
                             if let '"' | '\'' | '<' | '=' | '`' = character {
-                                // FIXME IMPLEMENT: This is an unexpected-character-in-unquoted-attribute-value parse error. Treat it as per the "anything else" entry below.
+                                // FIXME Implement:
+                                // SPEC: This is an unexpected-character-in-unquoted-attribute-value parse error. Treat it as per the "anything else" entry below.
                             }
 
-                            // Append the current input character to the current attribute's value.
+                            // SPEC: Append the current input character to the current attribute's value.
                             if let Some(Attribute { value, .. }) = &mut self.current_attribute {
                                 value.push(character)
                             }
                         }
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-value-(quoted)-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-value-(quoted)-state
                 State::AfterAttributeValueQuoted => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         whitespace!() => {
-                            // Switch to the before attribute name state.
+                            // SPEC: Switch to the before attribute name state.
                             self.switch_to(State::BeforeAttributeName);
                         }
                         Some('/') => {
-                            // Switch to the self-closing start tag state.
+                            // SPEC: Switch to the self-closing start tag state.
                             self.switch_to(State::SelfClosingStartTag);
                         }
                         Some('>') => {
-                            // Switch to the data state.
+                            // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
-                            // Emit the current tag token.
+                            // SPEC: Emit the current tag token.
                             self.emit_current_token();
                         }
                         eof!() => todo!(),
                         anything_else!(_) => todo!(),
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#self-closing-start-tag-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#self-closing-start-tag-state
                 State::SelfClosingStartTag => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         Some('>') => {
-                            // Set the self-closing flag of the current tag token.
+                            // SPEC: Set the self-closing flag of the current tag token.
                             if let Some(Token::StartTag { self_closing, .. }) =
                                 &mut self.current_token
                             {
                                 *self_closing = true
                             }
-                            // Emit the current tag token.
+                            // SPEC: Emit the current tag token.
                             self.emit_current_token();
-                            // Switch to the data state.
+                            // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
                         }
                         eof!() => todo!(),
@@ -626,7 +628,7 @@ impl Tokenizer {
                     }
                 }
                 State::BogusComment => todo!(),
-                // https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state
                 State::MarkupDeclarationOpen => {
                     // FIXME: Fix spec comments
                     // FIXME: Implement --
@@ -649,12 +651,12 @@ impl Tokenizer {
                 State::CommentEndDash => todo!(),
                 State::CommentEnd => todo!(),
                 State::CommentEndBang => todo!(),
-                // https://html.spec.whatwg.org/multipage/parsing.html#doctype-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#doctype-state
                 State::Doctype => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         whitespace!() => {
-                            // Switch to the before DOCTYPE name state.
+                            // SPEC: Switch to the before DOCTYPE name state.
                             self.switch_to(State::BeforeDoctypeName);
                             continue;
                         }
@@ -663,60 +665,60 @@ impl Tokenizer {
                         anything_else!(_) => todo!(),
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-name-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-name-state
                 State::BeforeDoctypeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         whitespace!() => {
-                            // Ignore the character.
+                            // SPEC: Ignore the character.
                             continue;
                         }
                         // FIXME: Implement ASCII upper alpha
                         null!() => todo!(),
                         Some('>') => todo!(),
                         eof!() => {
-                            // FIXME: Implement eof-in-doctype parser error.
-                            // This is an eof-in-doctype parse error.
+                            // FIXME: Implement
+                            // SPEC: This is an eof-in-doctype parse error.
 
-                            // Create a new DOCTYPE token.
-                            // Emit the current token.
+                            // SPEC: Create a new DOCTYPE token.
+                            //       Emit the current token.
                             self.emit_token(Token::Doctype {
                                 name: None,
                                 public_identifier: None,
                                 system_identifier: None,
-                                // Set its force-quirks flag to on.
+                                // SPEC: Set its force-quirks flag to on.
                                 force_quirks: true,
                             });
-                            // Emit an end-of-file token.
+                            // SPEC: Emit an end-of-file token.
                             self.emit_token(Token::EndOfFile);
                         }
                         anything_else!(character) => {
-                            // Create a new DOCTYPE token.
+                            // SPEC: Create a new DOCTYPE token.
                             self.set_current_token(Token::Doctype {
-                                // Set the token's name to the current input character.
+                                // SPEC: Set the token's name to the current input character.
                                 name: Some(String::from(character)),
                                 public_identifier: None,
                                 system_identifier: None,
                                 force_quirks: false,
                             });
-                            // Switch to the DOCTYPE name state.
+                            // SPEC: Switch to the DOCTYPE name state.
                             self.switch_to(State::DoctypeName);
                         }
                     }
                 }
-                // https://html.spec.whatwg.org/multipage/parsing.html#doctype-name-state
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#doctype-name-state
                 State::DoctypeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
                         whitespace!() => {
-                            // Switch to the after DOCTYPE name state.
+                            // SPEC: Switch to the after DOCTYPE name state.
                             self.switch_to(State::AfterDoctypeName);
                             continue;
                         }
                         Some('>') => {
-                            // Switch to the data state.
+                            // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
-                            // Emit the current DOCTYPE token.
+                            // SPEC: Emit the current DOCTYPE token.
                             self.emit_current_token();
                             continue;
                         }
@@ -724,7 +726,7 @@ impl Tokenizer {
                         null!() => todo!(),
                         eof!() => todo!(),
                         anything_else!(character) => {
-                            // Append the current input character to the current DOCTYPE token's name.
+                            // SPEC: Append the current input character to the current DOCTYPE token's name.
                             if let Some(Token::Doctype {
                                 name: Some(name), ..
                             }) = &mut self.current_token
