@@ -286,7 +286,7 @@ impl<'a> Tokenizer<'a> {
             };
         }
 
-        macro_rules! whitespace {
+        macro_rules! on_whitespace {
             () => {
                 on!('\t') | // Tab
                 on!('\n') | // Line Feed
@@ -301,19 +301,13 @@ impl<'a> Tokenizer<'a> {
             };
         }
 
-        macro_rules! eof {
-            () => {
-                None
-            };
-        }
-
-        macro_rules! null {
+        macro_rules! on_null {
             () => {
                 on!('\u{0000}')
             };
         }
 
-        macro_rules! anything_else {
+        macro_rules! on_anything_else {
             () => {
                 Some(_)
             };
@@ -322,15 +316,21 @@ impl<'a> Tokenizer<'a> {
             };
         }
 
-        macro_rules! c0_control {
+        macro_rules! on_eof {
+            () => {
+                None
+            };
+        }
+
+        macro_rules! c0_control_codepoint {
             () => {
                 0x0000..=0x001f
             };
         }
 
-        macro_rules! control {
+        macro_rules! control_codepoint {
             () => {
-                c0_control!() | 0x007f..=0x009f
+                c0_control_codepoint!() | 0x007f..=0x009f
             };
         }
 
@@ -344,7 +344,23 @@ impl<'a> Tokenizer<'a> {
             };
         }
 
-        macro_rules! ascii_digit {
+        macro_rules! leading_surrogate_codepoint {
+            () => {
+                0xd800..=0xdbff
+            };
+        }
+        macro_rules! trailing_surrogate_codepoint {
+            () => {
+                0xdc00..=0xdfff
+            };
+        }
+        macro_rules! surrogate_codepoint {
+            () => {
+                leading_surrogate_codepoint!() | trailing_surrogate_codepoint!()
+            };
+        }
+
+        macro_rules! on_ascii_digit {
             () => {
                 Some('0'..='9')
             };
@@ -353,7 +369,7 @@ impl<'a> Tokenizer<'a> {
             };
         }
 
-        macro_rules! ascii_upper_hex_digit_alpha {
+        macro_rules! on_ascii_upper_hex_digit_alpha {
             () => {
                 Some('A'..='F')
             };
@@ -362,7 +378,7 @@ impl<'a> Tokenizer<'a> {
             };
         }
 
-        macro_rules! ascii_lower_hex_digit_alpha {
+        macro_rules! on_ascii_lower_hex_digit_alpha {
             () => {
                 Some('a'..='f')
             };
@@ -371,18 +387,20 @@ impl<'a> Tokenizer<'a> {
             };
         }
 
-        macro_rules! ascii_hex_digit {
+        macro_rules! on_ascii_hex_digit {
             () => {
-                ascii_digit!() | ascii_lower_hex_digit_alpha!() | ascii_upper_hex_digit_alpha!()
+                on_ascii_digit!()
+                    | on_ascii_lower_hex_digit_alpha!()
+                    | on_ascii_upper_hex_digit_alpha!()
             };
             ($c:ident) => {
-                ascii_digit!($c)
-                    | ascii_lower_hex_digit_alpha!($c)
-                    | ascii_upper_hex_digit_alpha!($c)
+                on_ascii_digit!($c)
+                    | on_ascii_lower_hex_digit_alpha!($c)
+                    | on_ascii_upper_hex_digit_alpha!($c)
             };
         }
 
-        macro_rules! ascii_upper_alpha {
+        macro_rules! on_ascii_upper_alpha {
             () => {
                 Some('A'..='Z')
             };
@@ -391,7 +409,7 @@ impl<'a> Tokenizer<'a> {
             };
         }
 
-        macro_rules! ascii_lower_alpha {
+        macro_rules! on_ascii_lower_alpha {
             () => {
                 Some('a'..='z')
             };
@@ -400,37 +418,21 @@ impl<'a> Tokenizer<'a> {
             };
         }
 
-        macro_rules! ascii_alpha {
+        macro_rules! on_ascii_alpha {
             () => {
-                ascii_upper_alpha!() | ascii_lower_alpha!()
+                on_ascii_upper_alpha!() | on_ascii_lower_alpha!()
             };
             ($c:ident) => {
-                ascii_upper_alpha!($c) | ascii_lower_alpha!($c)
+                on_ascii_upper_alpha!($c) | on_ascii_lower_alpha!($c)
             };
         }
 
         macro_rules! ascii_alphanumeric {
             () => {
-                ascii_digit!() | ascii_alpha!()
+                on_ascii_digit!() | on_ascii_alpha!()
             };
             ($c:ident) => {
-                ascii_digit!($c) | ascii_alpha!($c)
-            };
-        }
-
-        macro_rules! leading_surrogate {
-            () => {
-                0xd800..=0xdbff
-            };
-        }
-        macro_rules! trailing_surrogate {
-            () => {
-                0xdc00..=0xdfff
-            };
-        }
-        macro_rules! surrogate {
-            () => {
-                leading_surrogate!() | trailing_surrogate!()
+                on_ascii_digit!($c) | on_ascii_alpha!($c)
             };
         }
 
@@ -470,12 +472,12 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the tag open state.
                             self.switch_to(State::TagOpen)
                         }
-                        null!() => todo!(),
-                        eof!() => {
+                        on_null!() => todo!(),
+                        on_eof!() => {
                             // SPEC: Emit an end-of-file token.
                             self.emit_token(Token::EndOfFile);
                         }
-                        anything_else!(character) => {
+                        on_anything_else!(character) => {
                             // SPEC: Emit the current input character as a character token.
                             self.emit_token(Token::Character { data: character });
                         }
@@ -498,7 +500,7 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the end tag open state.
                             self.switch_to(State::EndTagOpen);
                         }
-                        ascii_alpha!() => {
+                        on_ascii_alpha!() => {
                             // SPEC: Create a new start tag token.
                             self.set_current_token(Token::StartTag {
                                 // SPEC: Set its tag name to the empty string.
@@ -510,15 +512,15 @@ impl<'a> Tokenizer<'a> {
                             self.reconsume_in(State::TagName);
                         }
                         on!('?') => todo!(),
-                        eof!() => todo!(),
-                        anything_else!() => todo!(),
+                        on_eof!() => todo!(),
+                        on_anything_else!() => todo!(),
                     }
                 }
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#end-tag-open-state
                 State::EndTagOpen => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        ascii_alpha!() => {
+                        on_ascii_alpha!() => {
                             // SPEC: Create a new end tag token, set its tag name to the empty string.
                             self.set_current_token(Token::EndTag {
                                 name: String::new(),
@@ -529,15 +531,15 @@ impl<'a> Tokenizer<'a> {
                             self.reconsume_in(State::TagName);
                         }
                         on!('>') => todo!(),
-                        eof!() => todo!(),
-                        anything_else!() => todo!(),
+                        on_eof!() => todo!(),
+                        on_anything_else!() => todo!(),
                     }
                 }
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#tag-name-state
                 State::TagName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() => {
+                        on_whitespace!() => {
                             // SPEC: Switch to the before attribute name state.
                             self.switch_to(State::BeforeAttributeName);
                         }
@@ -551,9 +553,9 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Emit the current tag token.
                             self.emit_current_token();
                         }
-                        null!() => todo!(),
-                        eof!() => todo!(),
-                        anything_else!(character) => {
+                        on_null!() => todo!(),
+                        on_eof!() => todo!(),
+                        on_anything_else!(character) => {
                             // SPEC: ASCII upper alpha
                             //          Append the lowercase version of the current input character
                             //          (add 0x0020 to the character's code point)
@@ -599,16 +601,16 @@ impl<'a> Tokenizer<'a> {
                 State::BeforeAttributeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() => {
+                        on_whitespace!() => {
                             // SPEC: Ignore the character
                             continue;
                         }
-                        on!('/') | on!('>') | eof!() => {
+                        on!('/') | on!('>') | on_eof!() => {
                             // SPEC: Reconsume in the after attribute name state.
                             self.reconsume_in(State::AfterAttributeName);
                         }
                         on!('=') => todo!(),
-                        anything_else!() => {
+                        on_anything_else!() => {
                             // SPEC: Start a new attribute in the current tag token.
                             self.set_current_attribute(Attribute {
                                 // Set that attribute name and value to the empty string.
@@ -624,7 +626,7 @@ impl<'a> Tokenizer<'a> {
                 State::AttributeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() | on!('/') | on!('>') | eof!() => {
+                        on_whitespace!() | on!('/') | on!('>') | on_eof!() => {
                             // SPEC: Reconsume in the after attribute name state.
                             self.reconsume_in(State::AfterAttributeName);
                         }
@@ -632,8 +634,8 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the before attribute value state.
                             self.switch_to(State::BeforeAttributeValue);
                         }
-                        null!() => todo!(),
-                        anything_else!(character) => {
+                        on_null!() => todo!(),
+                        on_anything_else!(character) => {
                             // SPEC: ASCII upper alpha
                             //          Append the lowercase version of the current input character
                             //          (add 0x0020 to the character's code point)
@@ -656,7 +658,7 @@ impl<'a> Tokenizer<'a> {
                 State::AfterAttributeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() => {
+                        on_whitespace!() => {
                             // SPEC: Ignore the character
                             continue;
                         }
@@ -674,8 +676,8 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Emit the current tag token.
                             self.emit_current_token();
                         }
-                        eof!() => todo!(),
-                        anything_else!() => {
+                        on_eof!() => todo!(),
+                        on_anything_else!() => {
                             // SPEC: Start a new attribute in the current tag token.
                             self.set_current_attribute(Attribute {
                                 // SPEC: Set that attribute name and value to the empty string.
@@ -691,7 +693,7 @@ impl<'a> Tokenizer<'a> {
                 State::BeforeAttributeValue => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() => {
+                        on_whitespace!() => {
                             // SPEC: Ignore the character
                             continue;
                         }
@@ -704,11 +706,11 @@ impl<'a> Tokenizer<'a> {
                             self.switch_to(State::AttributeValueSingleQuoted);
                         }
                         on!('>') => todo!(),
-                        anything_else!() => {
+                        on_anything_else!() => {
                             // SPEC: Reconsume in the attribute value (unquoted) state.
                             self.reconsume_in(State::AttributeValueUnquoted);
                         }
-                        eof!() => {}
+                        on_eof!() => {}
                     }
                 }
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(double-quoted)-state
@@ -725,9 +727,9 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the character reference state.
                             self.switch_to(State::CharacterReference);
                         }
-                        null!() => todo!(),
-                        eof!() => todo!(),
-                        anything_else!(character) => {
+                        on_null!() => todo!(),
+                        on_eof!() => todo!(),
+                        on_anything_else!(character) => {
                             // SPEC: Append the current input character to the current attribute's value.
                             if let Some(Attribute { value, .. }) = &mut self.current_attribute {
                                 value.push(character)
@@ -749,9 +751,9 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the character reference state.
                             self.switch_to(State::CharacterReference);
                         }
-                        null!() => todo!(),
-                        eof!() => todo!(),
-                        anything_else!(character) => {
+                        on_null!() => todo!(),
+                        on_eof!() => todo!(),
+                        on_anything_else!(character) => {
                             // SPEC: Append the current input character to the current attribute's value.
                             if let Some(Attribute { value, .. }) = &mut self.current_attribute {
                                 value.push(character)
@@ -763,7 +765,7 @@ impl<'a> Tokenizer<'a> {
                 State::AttributeValueUnquoted => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() => {
+                        on_whitespace!() => {
                             // SPEC: Switch to the before attribute name state.
                             self.switch_to(State::BeforeAttributeName);
                         }
@@ -774,9 +776,9 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Emit the current tag token.
                             self.emit_current_token();
                         }
-                        null!() => todo!(),
-                        eof!() => todo!(),
-                        anything_else!(character) => {
+                        on_null!() => todo!(),
+                        on_eof!() => todo!(),
+                        on_anything_else!(character) => {
                             if let '"' | '\'' | '<' | '=' | '`' = character {
                                 // FIXME Implement:
                                 // SPEC: This is an unexpected-character-in-unquoted-attribute-value parse error. Treat it as per the "anything else" entry below.
@@ -793,7 +795,7 @@ impl<'a> Tokenizer<'a> {
                 State::AfterAttributeValueQuoted => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() => {
+                        on_whitespace!() => {
                             // SPEC: Switch to the before attribute name state.
                             self.switch_to(State::BeforeAttributeName);
                         }
@@ -807,8 +809,8 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Emit the current tag token.
                             self.emit_current_token();
                         }
-                        eof!() => todo!(),
-                        anything_else!() => {
+                        on_eof!() => todo!(),
+                        on_anything_else!() => {
                             // SPEC: This is a missing-whitespace-between-attributes parse error.
                             //       Reconsume in the before attribute name state.
                             self.reconsume_in(State::BeforeAttributeName);
@@ -831,8 +833,8 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the data state.
                             self.switch_to(State::Data);
                         }
-                        eof!() => todo!(),
-                        anything_else!() => todo!(),
+                        on_eof!() => todo!(),
+                        on_anything_else!() => todo!(),
                     }
                 }
                 State::BogusComment => todo!(),
@@ -863,28 +865,28 @@ impl<'a> Tokenizer<'a> {
                 State::Doctype => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() => {
+                        on_whitespace!() => {
                             // SPEC: Switch to the before DOCTYPE name state.
                             self.switch_to(State::BeforeDoctypeName);
                             continue;
                         }
                         on!('>') => todo!(),
-                        eof!() => todo!(),
-                        anything_else!() => todo!(),
+                        on_eof!() => todo!(),
+                        on_anything_else!() => todo!(),
                     }
                 }
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-name-state
                 State::BeforeDoctypeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() => {
+                        on_whitespace!() => {
                             // SPEC: Ignore the character.
                             continue;
                         }
                         // FIXME: Implement ASCII upper alpha
-                        null!() => todo!(),
+                        on_null!() => todo!(),
                         on!('>') => todo!(),
-                        eof!() => {
+                        on_eof!() => {
                             // FIXME: Implement
                             // SPEC: This is an eof-in-doctype parse error.
 
@@ -900,7 +902,7 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Emit an end-of-file token.
                             self.emit_token(Token::EndOfFile);
                         }
-                        anything_else!(character) => {
+                        on_anything_else!(character) => {
                             // SPEC: Create a new DOCTYPE token.
                             self.set_current_token(Token::Doctype {
                                 // SPEC: Set the token's name to the current input character.
@@ -918,7 +920,7 @@ impl<'a> Tokenizer<'a> {
                 State::DoctypeName => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        whitespace!() => {
+                        on_whitespace!() => {
                             // SPEC: Switch to the after DOCTYPE name state.
                             self.switch_to(State::AfterDoctypeName);
                             continue;
@@ -930,9 +932,9 @@ impl<'a> Tokenizer<'a> {
                             self.emit_current_token();
                             continue;
                         }
-                        null!() => todo!(),
-                        eof!() => todo!(),
-                        anything_else!(character) => {
+                        on_null!() => todo!(),
+                        on_eof!() => todo!(),
+                        on_anything_else!(character) => {
                             // SPEC: ASCII upper alpha
                             //          Append the lowercase version of the current input character
                             //          (add 0x0020 to the character's code point)
@@ -986,7 +988,7 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the numeric character reference state.
                             self.switch_to(State::NumericCharacterReference);
                         }
-                        anything_else!() | None => {
+                        on_anything_else!() | None => {
                             // SPEC: Flush code points consumed as a character reference.
                             self.flush_code_points_consumed_as_a_character_reference();
                             // SPEC: Reconsume in the return state.
@@ -1065,7 +1067,7 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Reconsume in the return state.
                             self.reconsume_in_return_state();
                         }
-                        anything_else!() | None => {
+                        on_anything_else!() | None => {
                             // SPEC: Reconsume in the return state.
                             self.reconsume_in_return_state();
                         }
@@ -1085,7 +1087,7 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the hexadecimal character reference start state.
                             self.switch_to(State::HexadecimalCharacterReferenceStart);
                         }
-                        anything_else!() | None => {
+                        on_anything_else!() | None => {
                             // SPEC: Reconsume in the decimal character reference start state.
                             self.reconsume_in(State::DecimalCharacterReferenceStart);
                         }
@@ -1095,11 +1097,11 @@ impl<'a> Tokenizer<'a> {
                 State::HexadecimalCharacterReferenceStart => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        ascii_hex_digit!() => {
+                        on_ascii_hex_digit!() => {
                             // SPEC: Reconsume in the hexadecimal character reference state.
                             self.reconsume_in(State::HexadecimalCharacterReference);
                         }
-                        anything_else!() | None => {
+                        on_anything_else!() | None => {
                             // SPEC: This is an absence-of-digits-in-numeric-character-reference parse error.
 
                             // SPEC: Flush code points consumed as a character reference.
@@ -1115,7 +1117,7 @@ impl<'a> Tokenizer<'a> {
                     self.consume_next_input_character();
 
                     match self.current_input_character {
-                        ascii_digit!(character) => {
+                        on_ascii_digit!(character) => {
                             // SPEC: Multiply the character reference code by 16.
                             self.character_reference_code *= 16;
                             // SPEC: Add a numeric version of the current input character
@@ -1123,7 +1125,7 @@ impl<'a> Tokenizer<'a> {
                             //      to the character reference code.
                             self.character_reference_code += character as u32 - 0x0030;
                         }
-                        ascii_upper_hex_digit_alpha!(character) => {
+                        on_ascii_upper_hex_digit_alpha!(character) => {
                             // SPEC: Multiply the character reference code by 16.
                             self.character_reference_code *= 16;
                             // SPEC: Add a numeric version of the current input character as a hexadecimal digit
@@ -1131,7 +1133,7 @@ impl<'a> Tokenizer<'a> {
                             //       to the character reference code.
                             self.character_reference_code += character as u32 - 0x0037;
                         }
-                        ascii_lower_hex_digit_alpha!(character) => {
+                        on_ascii_lower_hex_digit_alpha!(character) => {
                             // SPEC: Multiply the character reference code by 16.
                             self.character_reference_code *= 16;
                             // SPEC: Add a numeric version of the current input character as a hexadecimal digit
@@ -1143,7 +1145,7 @@ impl<'a> Tokenizer<'a> {
                             // SPEC: Switch to the numeric character reference end state.
                             self.switch_to(State::NumericCharacterReferenceEnd);
                         }
-                        anything_else!() | None => {
+                        on_anything_else!() | None => {
                             // SPEC: This is a missing-semicolon-after-character-reference parse error.
                             // SPEC: Reconsume in the numeric character reference end state.
                             self.reconsume_in(State::NumericCharacterReferenceEnd);
@@ -1154,10 +1156,10 @@ impl<'a> Tokenizer<'a> {
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#numeric-character-reference-end-state
                 State::NumericCharacterReferenceEnd => match self.character_reference_code {
                     0x00 => todo!(),
-                    surrogate!() => todo!(),
+                    surrogate_codepoint!() => todo!(),
                     noncharacter!() => todo!(),
                     0x10ffff.. => todo!(),
-                    c @ 0x0d | c @ control!() if c != whitespace_codepoint!() => todo!(),
+                    c @ 0x0d | c @ control_codepoint!() if c != whitespace_codepoint!() => todo!(),
                     _ => {
                         // SPEC: Set the temporary buffer to the empty string.
                         self.temporary_buffer.clear();
