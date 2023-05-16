@@ -70,10 +70,7 @@ pub(crate) const NAMED_CHARACTER_REFERENCES: [(&str, Ncr); 2005] = [
     ("CircleMinus;", Ncr::new([8854u32], "\u{2296}")),
     ("CirclePlus;", Ncr::new([8853u32], "\u{2295}")),
     ("CircleTimes;", Ncr::new([8855u32], "\u{2297}")),
-    (
-        "&ClockwiseContourIntegral;",
-        Ncr::new([8754u32], "\u{2232}"),
-    ),
+    ("ClockwiseContourIntegral;", Ncr::new([8754u32], "\u{2232}")),
     ("CloseCurlyDoubleQuote;", Ncr::new([8221u32], "\u{201D}")),
     ("CloseCurlyQuote;", Ncr::new([8217u32], "\u{2019}")),
     ("Colon;", Ncr::new([8759u32], "\u{2237}")),
@@ -84,7 +81,7 @@ pub(crate) const NAMED_CHARACTER_REFERENCES: [(&str, Ncr); 2005] = [
     ("Copf;", Ncr::new([8450u32], "\u{2102}")),
     ("Coproduct;", Ncr::new([8720u32], "\u{2210}")),
     (
-        "&CounterClockwiseContourIntegral;",
+        "CounterClockwiseContourIntegral;",
         Ncr::new([8755u32], "\u{2233}"),
     ),
     ("Cross;", Ncr::new([10799u32], "\u{2A2F}")),
@@ -123,7 +120,7 @@ pub(crate) const NAMED_CHARACTER_REFERENCES: [(&str, Ncr); 2005] = [
     ("DoubleLeftTee;", Ncr::new([10980u32], "\u{2AE4}")),
     ("DoubleLongLeftArrow;", Ncr::new([10232u32], "\u{27F8}")),
     (
-        "&DoubleLongLeftRightArrow;",
+        "DoubleLongLeftRightArrow;",
         Ncr::new([10234u32], "\u{27FA}"),
     ),
     ("DoubleLongRightArrow;", Ncr::new([10233u32], "\u{27F9}")),
