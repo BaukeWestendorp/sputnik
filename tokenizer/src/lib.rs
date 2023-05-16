@@ -1,3 +1,9 @@
+use named_character_references::NamedCharacterReference;
+
+use crate::named_character_references::NAMED_CHARACTER_REFERENCES;
+
+mod named_character_references;
+
 #[allow(unused)]
 #[derive(Debug, Copy, Clone)]
 enum State {
@@ -106,7 +112,7 @@ pub enum Token {
         data: String,
     },
     Character {
-        data: String,
+        data: char,
     },
     EndOfFile,
 }
@@ -118,28 +124,36 @@ pub struct Attribute {
 }
 
 #[derive(Debug)]
-pub struct Tokenizer {
+pub struct Tokenizer<'a> {
     input: String,
     state: State,
+    return_state: Option<State>,
+    temporary_buffer: String,
+    temporary_named_character_references_buffer: Vec<(String, NamedCharacterReference<'a>)>,
     tokens: Vec<Token>,
     insertion_point: Option<usize>,
     current_input_character: Option<char>,
     eof_emitted: bool,
     current_token: Option<Token>,
     current_attribute: Option<Attribute>,
+    character_reference_code: u32,
 }
 
-impl Tokenizer {
+impl<'a> Tokenizer<'a> {
     pub fn new(input: &str) -> Self {
         Self {
             input: String::from(input),
             state: State::Data,
+            return_state: None,
+            temporary_buffer: String::new(),
+            temporary_named_character_references_buffer: Vec::new(),
             tokens: Vec::new(),
             insertion_point: None,
             current_input_character: None,
             eof_emitted: false,
             current_token: None,
             current_attribute: None,
+            character_reference_code: 0,
         }
     }
 
@@ -222,11 +236,47 @@ impl Tokenizer {
         self.state = state;
     }
 
+    fn switch_to_return_state(&mut self) {
+        if let Some(return_state) = self.return_state {
+            self.switch_to(return_state);
+            self.return_state = None;
+        }
+    }
+
     fn reconsume_and_switch_to(&mut self, state: State) {
         if let Some(insertion_point) = self.insertion_point {
             self.insertion_point = Some(insertion_point - 1);
         }
         self.switch_to(state);
+    }
+
+    fn reconsume_in_return_state(&mut self) {
+        if let Some(return_state) = self.return_state {
+            self.reconsume_and_switch_to(return_state);
+            self.return_state = None;
+        }
+    }
+
+    fn set_return_state(&mut self, state: State) {
+        self.return_state = Some(state);
+    }
+
+    fn flush_code_points_consumed_as_a_character_reference(&mut self) {
+        // SPEC: When a state says to flush code points consumed as a character reference,
+        //       it means that for each code point in the temporary buffer
+        //       (in the order they were added to the buffer) user agent must append the code point
+        //       from the buffer to the current attribute's value if the character reference was
+        //       consumed as part of an attribute,
+        if let Some(Attribute { value, .. }) = &mut self.current_attribute {
+            for character in self.temporary_buffer.chars() {
+                value.push(character);
+            }
+        } else {
+            // SPEC: or emit the code point as a character token otherwise.
+            for character in self.temporary_buffer.clone().chars() {
+                self.emit_token(Token::Character { data: character });
+            }
+        }
     }
 
     pub fn tokenize(&mut self) -> Vec<Token> {
@@ -236,6 +286,12 @@ impl Tokenizer {
                 Some('\n') | // Line Feed
                 Some('\u{000c}') | // Form Feed
                 Some(' ') // Space
+            };
+            ($c:ident) => {
+                Some($c @ '\t') | // Tab
+                Some($c @ '\n') | // Line Feed
+                Some($c @ '\u{000c}') | // Form Feed
+                Some($c @ ' ') // Space
             };
         }
 
@@ -252,17 +308,139 @@ impl Tokenizer {
         }
 
         macro_rules! anything_else {
+            () => {
+                Some(_)
+            };
             ($c:ident) => {
                 Some($c)
             };
-            (_) => {
-                Some(_)
+        }
+
+        macro_rules! c0_control {
+            () => {
+                0x0000..=0x001f
+            };
+        }
+
+        macro_rules! control {
+            () => {
+                c0_control!() | 0x007f..=0x009f
+            };
+        }
+
+        macro_rules! whitespace_codepoint {
+            () => {
+                0x0009 | // SPEC: TAB,
+                0x000A | //       LF
+                0x000C | //       FF
+                0x000D | //       CR
+                0x0020   //       SPACE.
+            };
+        }
+
+        macro_rules! ascii_digit {
+            () => {
+                Some('0'..='9')
+            };
+            ($c:ident) => {
+                Some($c @ '0'..='9')
+            };
+        }
+
+        macro_rules! ascii_upper_hex_digit_alpha {
+            () => {
+                Some('A'..='F')
+            };
+            ($c:ident) => {
+                Some($c @ 'A'..='F')
+            };
+        }
+
+        macro_rules! ascii_lower_hex_digit_alpha {
+            () => {
+                Some('a'..='f')
+            };
+            ($c:ident) => {
+                Some($c @ 'a'..='f')
+            };
+        }
+
+        macro_rules! ascii_hex_digit {
+            () => {
+                ascii_digit!() | ascii_lower_hex_digit_alpha!() | ascii_upper_hex_digit_alpha!()
+            };
+            ($c:ident) => {
+                ascii_digit!($c)
+                    | ascii_lower_hex_digit_alpha!($c)
+                    | ascii_upper_hex_digit_alpha!($c)
+            };
+        }
+
+        macro_rules! ascii_upper_alpha {
+            () => {
+                Some('A'..='Z')
+            };
+            ($c:ident) => {
+                Some($c @ 'A'..='Z')
+            };
+        }
+
+        macro_rules! ascii_lower_alpha {
+            () => {
+                Some('a'..='z')
+            };
+            ($c:ident) => {
+                Some($c @ 'a'..='z')
             };
         }
 
         macro_rules! ascii_alpha {
             () => {
-                Some('a'..='z' | 'A'..='Z')
+                ascii_upper_alpha!() | ascii_lower_alpha!()
+            };
+            ($c:ident) => {
+                ascii_upper_alpha!($c) | ascii_lower_alpha!($c)
+            };
+        }
+
+        macro_rules! ascii_alphanumeric {
+            () => {
+                ascii_digit!() | ascii_alpha!()
+            };
+            ($c:ident) => {
+                ascii_digit!($c) | ascii_alpha!($c)
+            };
+        }
+
+        macro_rules! leading_surrogate {
+            () => {
+                0xd800..=0xdbff
+            };
+        }
+        macro_rules! trailing_surrogate {
+            () => {
+                0xdc00..=0xdfff
+            };
+        }
+        macro_rules! surrogate {
+            () => {
+                leading_surrogate!() | trailing_surrogate!()
+            };
+        }
+
+        #[rustfmt::skip]
+        macro_rules! noncharacter {
+            () => {
+                (0xFDD0..=0xFDEF)
+                | 0xFFFE  | 0xFFFF  | 0x1FFFE | 0x1FFFF
+                | 0x2FFFE | 0x2FFFF | 0x3FFFE | 0x3FFFF
+                | 0x4FFFE | 0x4FFFF | 0x5FFFE | 0x5FFFF
+                | 0x6FFFE | 0x6FFFF | 0x7FFFE | 0x7FFFF
+                | 0x8FFFE | 0x8FFFF | 0x9FFFE | 0x9FFFF
+                | 0xAFFFE | 0xAFFFF | 0xBFFFE | 0xBFFFF
+                | 0xCFFFE | 0xCFFFF | 0xDFFFE | 0xDFFFF
+                | 0xEFFFE | 0xEFFFF | 0xFFFFE | 0xFFFFF
+                | 0x10FFFE| 0x10FFFF
             };
         }
 
@@ -276,7 +454,12 @@ impl Tokenizer {
                 State::Data => {
                     self.consume_next_input_character();
                     match self.current_input_character {
-                        Some('&') => todo!(),
+                        Some('&') => {
+                            // SPEC: Set the return state to the data state.
+                            self.set_return_state(State::Data);
+                            // SPEC: Switch to the character reference state.
+                            self.switch_to(State::CharacterReference);
+                        }
                         Some('<') => {
                             // SPEC: Switch to the tag open state.
                             self.switch_to(State::TagOpen)
@@ -288,9 +471,7 @@ impl Tokenizer {
                         }
                         anything_else!(character) => {
                             // SPEC: Emit the current input character as a character token.
-                            self.emit_token(Token::Character {
-                                data: String::from(character),
-                            });
+                            self.emit_token(Token::Character { data: character });
                         }
                     }
                 }
@@ -324,7 +505,7 @@ impl Tokenizer {
                         }
                         Some('?') => todo!(),
                         eof!() => todo!(),
-                        anything_else!(_) => todo!(),
+                        anything_else!() => todo!(),
                     }
                 }
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#end-tag-open-state
@@ -343,7 +524,7 @@ impl Tokenizer {
                         }
                         Some('>') => todo!(),
                         eof!() => todo!(),
-                        anything_else!(_) => todo!(),
+                        anything_else!() => todo!(),
                     }
                 }
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#tag-name-state
@@ -421,7 +602,7 @@ impl Tokenizer {
                             self.reconsume_and_switch_to(State::AfterAttributeName);
                         }
                         Some('=') => todo!(),
-                        anything_else!(_) => {
+                        anything_else!() => {
                             // SPEC: Start a new attribute in the current tag token.
                             self.set_current_attribute(Attribute {
                                 // Set that attribute name and value to the empty string.
@@ -488,7 +669,7 @@ impl Tokenizer {
                             self.emit_current_token();
                         }
                         eof!() => todo!(),
-                        anything_else!(_) => {
+                        anything_else!() => {
                             // SPEC: Start a new attribute in the current tag token.
                             self.set_current_attribute(Attribute {
                                 // SPEC: Set that attribute name and value to the empty string.
@@ -517,7 +698,7 @@ impl Tokenizer {
                             self.switch_to(State::AttributeValueSingleQuoted);
                         }
                         Some('>') => todo!(),
-                        anything_else!(_) => {
+                        anything_else!() => {
                             // SPEC: Reconsume in the attribute value (unquoted) state.
                             self.reconsume_and_switch_to(State::AttributeValueUnquoted);
                         }
@@ -532,7 +713,12 @@ impl Tokenizer {
                             // SPEC: Switch to the after attribute value (quoted) state.
                             self.switch_to(State::AfterAttributeValueQuoted);
                         }
-                        Some('&') => todo!(),
+                        Some('&') => {
+                            // SPEC: Set the return state to the attribute value (double-quoted) state.
+                            self.set_return_state(State::AttributeValueDoubleQuoted);
+                            // SPEC: Switch to the character reference state.
+                            self.switch_to(State::CharacterReference);
+                        }
                         null!() => todo!(),
                         eof!() => todo!(),
                         anything_else!(character) => {
@@ -551,7 +737,12 @@ impl Tokenizer {
                             // SPEC: Switch to the after attribute value (quoted) state.
                             self.switch_to(State::AfterAttributeValueQuoted);
                         }
-                        Some('&') => todo!(),
+                        Some('&') => {
+                            // SPEC: Set the return state to the attribute value (single-quoted) state.
+                            self.set_return_state(State::AttributeValueSingleQuoted);
+                            // SPEC: Switch to the character reference state.
+                            self.switch_to(State::CharacterReference);
+                        }
                         null!() => todo!(),
                         eof!() => todo!(),
                         anything_else!(character) => {
@@ -611,7 +802,11 @@ impl Tokenizer {
                             self.emit_current_token();
                         }
                         eof!() => todo!(),
-                        anything_else!(_) => todo!(),
+                        anything_else!() => {
+                            // SPEC: This is a missing-whitespace-between-attributes parse error.
+                            //       Reconsume in the before attribute name state.
+                            self.reconsume_and_switch_to(State::BeforeAttributeName);
+                        }
                     }
                 }
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#self-closing-start-tag-state
@@ -631,7 +826,7 @@ impl Tokenizer {
                             self.switch_to(State::Data);
                         }
                         eof!() => todo!(),
-                        anything_else!(_) => todo!(),
+                        anything_else!() => todo!(),
                     }
                 }
                 State::BogusComment => todo!(),
@@ -669,7 +864,7 @@ impl Tokenizer {
                         }
                         Some('>') => todo!(),
                         eof!() => todo!(),
-                        anything_else!(_) => todo!(),
+                        anything_else!() => todo!(),
                     }
                 }
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-name-state
@@ -764,15 +959,212 @@ impl Tokenizer {
                 State::CDataSection => todo!(),
                 State::CDataSectionBracket => todo!(),
                 State::CDataSectionEnd => todo!(),
-                State::CharacterReference => todo!(),
-                State::NamedCharacterReference => todo!(),
-                State::AmbiguousAmpersand => todo!(),
-                State::NumericCharacterReference => todo!(),
-                State::HexadecimalCharacterReferenceStart => todo!(),
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#character-reference-state
+                State::CharacterReference => {
+                    // SPEC: Set the temporary buffer to the empty string.
+                    self.temporary_buffer.clear();
+                    // SPEC: Append a U+0026 AMPERSAND (&) character to the temporary buffer.
+                    self.temporary_buffer.push('&');
+                    // SPEC: Consume the next input character:
+                    self.consume_next_input_character();
+
+                    match self.current_input_character {
+                        ascii_alphanumeric!() => {
+                            // SPEC: Reconsume in the named character reference state.
+                            self.reconsume_and_switch_to(State::NamedCharacterReference);
+                        }
+                        Some('#') => {
+                            // SPEC: Append the current input character to the temporary buffer.
+                            self.temporary_buffer
+                                .push(self.current_input_character.unwrap());
+                            // SPEC: Switch to the numeric character reference state.
+                            self.switch_to(State::NumericCharacterReference);
+                        }
+                        anything_else!() | None => {
+                            // SPEC: Flush code points consumed as a character reference.
+                            self.flush_code_points_consumed_as_a_character_reference();
+                            // SPEC: Reconsume in the return state.
+                            self.reconsume_in_return_state();
+                        }
+                    }
+                }
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#named-character-reference-state
+                State::NamedCharacterReference => {
+                    self.temporary_named_character_references_buffer = NAMED_CHARACTER_REFERENCES
+                        .map(|ncr| (ncr.0.to_string(), ncr.1))
+                        .to_vec();
+
+                    while self.temporary_named_character_references_buffer.len() > 1 {
+                        self.consume_next_input_character();
+
+                        // SPEC: Consume the maximum number of characters possible,
+                        //       where the consumed characters are one of the identifiers
+                        //       in the first column of the named character references table.
+                        self.temporary_named_character_references_buffer
+                            .retain_mut(|ncr| {
+                                ncr.0.starts_with(self.current_input_character.unwrap())
+                            });
+                        for ncr in self.temporary_named_character_references_buffer.iter_mut() {
+                            ncr.0.remove(0);
+                        }
+                        // SPEC: Append each character to the temporary buffer when it's consumed.
+                        self.temporary_buffer
+                            .push(self.current_input_character.unwrap());
+                    }
+
+                    if !self.temporary_named_character_references_buffer.is_empty() {
+                        // SPEC: If there is a match
+
+                        // SPEC: If the character reference was consumed as part of an attribute,
+                        if self.current_attribute.is_some() {
+                            // SPEC: and the last character matched is not a U+003B SEMICOLON character (;),
+                            if self.temporary_buffer.chars().last() != Some(';') {
+                                // SPEC: and the next input character is either a U+003D EQUALS SIGN character (=)
+                                //       or an ASCII alphanumeric, then, for historical reasons,
+                                if let Some('=') | ascii_alphanumeric!() =
+                                    self.next_input_character()
+                                {
+                                    // SPEC: flush code points consumed as a character reference
+                                    self.flush_code_points_consumed_as_a_character_reference();
+                                    // SPEC: and switch to the return state.
+                                    self.switch_to_return_state();
+                                }
+                            }
+                        }
+                    } else {
+                        // SPEC: Otherwise
+
+                        // SPEC: Flush code points consumed as a character reference.
+                        self.flush_code_points_consumed_as_a_character_reference();
+                        // SPEC: Switch to the ambiguous ampersand state.
+                        self.switch_to(State::AmbiguousAmpersand);
+                    }
+                }
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#ambiguous-ampersand-state
+                State::AmbiguousAmpersand => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        ascii_alphanumeric!(character) => {
+                            // SPEC: If the character reference was consumed as part of an attribute,
+                            if let Some(Attribute { value, .. }) = &mut self.current_attribute {
+                                // SPEC: then append the current input character to the current attribute's value.
+                                value.push(character);
+                            } else {
+                                // SPEC: Otherwise, emit the current input character as a character token.
+                                self.emit_token(Token::Character { data: character });
+                            }
+                        }
+                        Some(';') => {
+                            // SPEC: This is an unknown-named-character-reference parse error.
+                            // SPEC: Reconsume in the return state.
+                            self.reconsume_in_return_state();
+                        }
+                        anything_else!() | None => {
+                            // SPEC: Reconsume in the return state.
+                            self.reconsume_in_return_state();
+                        }
+                    }
+                }
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#numeric-character-reference-state
+                State::NumericCharacterReference => {
+                    self.consume_next_input_character();
+
+                    // SPEC: Set the character reference code to zero (0).
+                    self.character_reference_code = 0;
+
+                    match self.current_input_character {
+                        Some(character @ 'x') | Some(character @ 'X') => {
+                            // SPEC: Append the current input character to the temporary buffer.
+                            self.temporary_buffer.push(character);
+                            // SPEC: Switch to the hexadecimal character reference start state.
+                            self.switch_to(State::HexadecimalCharacterReferenceStart);
+                        }
+                        anything_else!() | None => {
+                            // SPEC: Reconsume in the decimal character reference start state.
+                            self.reconsume_and_switch_to(State::DecimalCharacterReferenceStart);
+                        }
+                    }
+                }
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#hexadecimal-character-reference-start-state
+                State::HexadecimalCharacterReferenceStart => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        ascii_hex_digit!() => {
+                            // SPEC: Reconsume in the hexadecimal character reference state.
+                            self.reconsume_and_switch_to(State::HexadecimalCharacterReference);
+                        }
+                        anything_else!() | None => {
+                            // SPEC: This is an absence-of-digits-in-numeric-character-reference parse error.
+
+                            // SPEC: Flush code points consumed as a character reference.
+                            self.flush_code_points_consumed_as_a_character_reference();
+                            // SPEC: Reconsume in the return state.
+                            self.reconsume_in_return_state();
+                        }
+                    }
+                }
                 State::DecimalCharacterReferenceStart => todo!(),
-                State::HexadecimalCharacterReference => todo!(),
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#hexadecimal-character-reference-state
+                State::HexadecimalCharacterReference => {
+                    self.consume_next_input_character();
+
+                    match self.current_input_character {
+                        ascii_digit!(character) => {
+                            // SPEC: Multiply the character reference code by 16.
+                            self.character_reference_code *= 16;
+                            // SPEC: Add a numeric version of the current input character
+                            //      (subtract 0x0030 from the character's code point)
+                            //      to the character reference code.
+                            self.character_reference_code += character as u32 - 0x0030;
+                        }
+                        ascii_upper_hex_digit_alpha!(character) => {
+                            // SPEC: Multiply the character reference code by 16.
+                            self.character_reference_code *= 16;
+                            // SPEC: Add a numeric version of the current input character as a hexadecimal digit
+                            //       (subtract 0x0037 from the character's code point)
+                            //       to the character reference code.
+                            self.character_reference_code += character as u32 - 0x0037;
+                        }
+                        ascii_lower_hex_digit_alpha!(character) => {
+                            // SPEC: Multiply the character reference code by 16.
+                            self.character_reference_code *= 16;
+                            // SPEC: Add a numeric version of the current input character as a hexadecimal digit
+                            //       (subtract 0x0037 from the character's code point)
+                            //       to the character reference code.
+                            self.character_reference_code += character as u32 - 0x0057;
+                        }
+                        Some(';') => {
+                            // SPEC: Switch to the numeric character reference end state.
+                            self.switch_to(State::NumericCharacterReferenceEnd);
+                        }
+                        anything_else!() | None => {
+                            // SPEC: This is a missing-semicolon-after-character-reference parse error.
+                            // SPEC: Reconsume in the numeric character reference end state.
+                            self.reconsume_and_switch_to(State::NumericCharacterReferenceEnd);
+                        }
+                    }
+                }
                 State::DecimalCharacterReference => todo!(),
-                State::NumericCharacterReferenceEnd => todo!(),
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#numeric-character-reference-end-state
+                State::NumericCharacterReferenceEnd => match self.character_reference_code {
+                    0x00 => todo!(),
+                    surrogate!() => todo!(),
+                    noncharacter!() => todo!(),
+                    0x10ffff.. => todo!(),
+                    c @ 0x0d | c @ control!() if c != whitespace_codepoint!() => todo!(),
+                    _ => {
+                        // SPEC: Set the temporary buffer to the empty string.
+                        self.temporary_buffer.clear();
+                        // SPEC: Append a code point equal to the character reference code to the temporary buffer.
+                        if let Some(character) = char::from_u32(self.character_reference_code) {
+                            self.temporary_buffer.push(character);
+                        }
+                        // SPEC: Flush code points consumed as a character reference.
+                        self.flush_code_points_consumed_as_a_character_reference();
+                        // SPEC: Switch to the return state.
+                        self.switch_to_return_state();
+                    }
+                },
             }
         }
 
