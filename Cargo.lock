@@ -3,8 +3,16 @@
 version = 3
 
 [[package]]
+name = "dom"
+version = "0.1.0"
+
+[[package]]
 name = "parser"
 version = "0.1.0"
+dependencies = [
+ "dom",
+ "tokenizer",
+]
 
 [[package]]
 name = "tokenizer"

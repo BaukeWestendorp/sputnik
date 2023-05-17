@@ -4,6 +4,176 @@ use crate::named_character_references::NAMED_CHARACTER_REFERENCES;
 
 mod named_character_references;
 
+macro_rules! on {
+    ($c:expr) => {
+        Some($c)
+    };
+}
+
+macro_rules! on_whitespace {
+    () => {
+        on!('\t') | // Tab
+        on!('\n') | // Line Feed
+        on!('\u{000c}') | // Form Feed
+        on!(' ') // Space
+    };
+    ($c:ident) => {
+        Some($c @ '\t') | // Tab
+        Some($c @ '\n') | // Line Feed
+        Some($c @ '\u{000c}') | // Form Feed
+        Some($c @ ' ') // Space
+    };
+}
+
+macro_rules! on_null {
+    () => {
+        on!('\u{0000}')
+    };
+}
+
+macro_rules! on_anything_else {
+    () => {
+        Some(_)
+    };
+    ($c:ident) => {
+        Some($c)
+    };
+}
+
+macro_rules! on_eof {
+    () => {
+        None
+    };
+}
+
+macro_rules! c0_control_codepoint {
+    () => {
+        0x0000..=0x001f
+    };
+}
+
+macro_rules! control_codepoint {
+    () => {
+        c0_control_codepoint!() | 0x007f..=0x009f
+    };
+}
+
+macro_rules! whitespace_codepoint {
+    () => {
+        0x0009 | // SPEC: TAB,
+        0x000A | //       LF
+        0x000C | //       FF
+        0x000D | //       CR
+        0x0020   //       SPACE.
+    };
+}
+
+macro_rules! leading_surrogate_codepoint {
+    () => {
+        0xd800..=0xdbff
+    };
+}
+macro_rules! trailing_surrogate_codepoint {
+    () => {
+        0xdc00..=0xdfff
+    };
+}
+macro_rules! surrogate_codepoint {
+    () => {
+        leading_surrogate_codepoint!() | trailing_surrogate_codepoint!()
+    };
+}
+
+macro_rules! on_ascii_digit {
+    () => {
+        Some('0'..='9')
+    };
+    ($c:ident) => {
+        Some($c @ '0'..='9')
+    };
+}
+
+macro_rules! on_ascii_upper_hex_digit_alpha {
+    () => {
+        Some('A'..='F')
+    };
+    ($c:ident) => {
+        Some($c @ 'A'..='F')
+    };
+}
+
+macro_rules! on_ascii_lower_hex_digit_alpha {
+    () => {
+        Some('a'..='f')
+    };
+    ($c:ident) => {
+        Some($c @ 'a'..='f')
+    };
+}
+
+macro_rules! on_ascii_hex_digit {
+    () => {
+        on_ascii_digit!() | on_ascii_lower_hex_digit_alpha!() | on_ascii_upper_hex_digit_alpha!()
+    };
+    ($c:ident) => {
+        on_ascii_digit!($c)
+            | on_ascii_lower_hex_digit_alpha!($c)
+            | on_ascii_upper_hex_digit_alpha!($c)
+    };
+}
+
+macro_rules! on_ascii_upper_alpha {
+    () => {
+        Some('A'..='Z')
+    };
+    ($c:ident) => {
+        Some($c @ 'A'..='Z')
+    };
+}
+
+macro_rules! on_ascii_lower_alpha {
+    () => {
+        Some('a'..='z')
+    };
+    ($c:ident) => {
+        Some($c @ 'a'..='z')
+    };
+}
+
+macro_rules! on_ascii_alpha {
+    () => {
+        on_ascii_upper_alpha!() | on_ascii_lower_alpha!()
+    };
+    ($c:ident) => {
+        on_ascii_upper_alpha!($c) | on_ascii_lower_alpha!($c)
+    };
+}
+
+macro_rules! ascii_alphanumeric {
+    () => {
+        on_ascii_digit!() | on_ascii_alpha!()
+    };
+    ($c:ident) => {
+        on_ascii_digit!($c) | on_ascii_alpha!($c)
+    };
+}
+
+#[rustfmt::skip]
+macro_rules! noncharacter {
+    () => {
+        (0xFDD0..=0xFDEF)
+        | 0xFFFE  | 0xFFFF  | 0x1FFFE | 0x1FFFF
+        | 0x2FFFE | 0x2FFFF | 0x3FFFE | 0x3FFFF
+        | 0x4FFFE | 0x4FFFF | 0x5FFFE | 0x5FFFF
+        | 0x6FFFE | 0x6FFFF | 0x7FFFE | 0x7FFFF
+        | 0x8FFFE | 0x8FFFF | 0x9FFFE | 0x9FFFF
+        | 0xAFFFE | 0xAFFFF | 0xBFFFE | 0xBFFFF
+        | 0xCFFFE | 0xCFFFF | 0xDFFFE | 0xDFFFF
+        | 0xEFFFE | 0xEFFFF | 0xFFFFE | 0xFFFFF
+        | 0x10FFFE| 0x10FFFF
+    };
+}
+
 #[allow(unused)]
 #[derive(Debug, Copy, Clone)]
 enum State {
@@ -89,7 +259,6 @@ enum State {
     NumericCharacterReferenceEnd,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Doctype {
@@ -119,27 +288,27 @@ pub enum Token {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
-    name: String,
-    value: String,
+    pub name: String,
+    pub value: String,
 }
 
 #[derive(Debug)]
-pub struct Tokenizer<'a> {
+pub struct Tokenizer {
     input: String,
     state: State,
     return_state: Option<State>,
     temporary_buffer: String,
-    temporary_named_character_references_buffer: Vec<(String, NamedCharacterReference<'a>)>,
+    temporary_named_character_references_buffer: Vec<(String, NamedCharacterReference<'static>)>,
     tokens: Vec<Token>,
     insertion_point: Option<usize>,
     current_input_character: Option<char>,
-    eof_emitted: bool,
+    token_emitted: bool,
     current_token: Option<Token>,
     current_attribute: Option<Attribute>,
     character_reference_code: u32,
 }
 
-impl<'a> Tokenizer<'a> {
+impl Tokenizer {
     pub fn new(input: &str) -> Self {
         Self {
             input: String::from(input),
@@ -150,7 +319,7 @@ impl<'a> Tokenizer<'a> {
             tokens: Vec::new(),
             insertion_point: None,
             current_input_character: None,
-            eof_emitted: false,
+            token_emitted: false,
             current_token: None,
             current_attribute: None,
             character_reference_code: 0,
@@ -195,10 +364,7 @@ impl<'a> Tokenizer<'a> {
 
     fn emit_token(&mut self, token: Token) {
         self.tokens.push(token.clone());
-
-        if token == Token::EndOfFile {
-            self.eof_emitted = true
-        }
+        self.token_emitted = true;
     }
 
     fn set_current_token(&mut self, token: Token) {
@@ -279,181 +445,19 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    pub fn tokenize(&mut self) -> Vec<Token> {
-        macro_rules! on {
-            ($c:expr) => {
-                Some($c)
-            };
-        }
+    pub fn current_token(&self) -> Option<&Token> {
+        self.tokens.last()
+    }
 
-        macro_rules! on_whitespace {
-            () => {
-                on!('\t') | // Tab
-                on!('\n') | // Line Feed
-                on!('\u{000c}') | // Form Feed
-                on!(' ') // Space
-            };
-            ($c:ident) => {
-                Some($c @ '\t') | // Tab
-                Some($c @ '\n') | // Line Feed
-                Some($c @ '\u{000c}') | // Form Feed
-                Some($c @ ' ') // Space
-            };
-        }
+    pub fn next_token(&mut self) -> Option<&Token> {
+        self.token_emitted = false;
 
-        macro_rules! on_null {
-            () => {
-                on!('\u{0000}')
-            };
-        }
-
-        macro_rules! on_anything_else {
-            () => {
-                Some(_)
-            };
-            ($c:ident) => {
-                Some($c)
-            };
-        }
-
-        macro_rules! on_eof {
-            () => {
-                None
-            };
-        }
-
-        macro_rules! c0_control_codepoint {
-            () => {
-                0x0000..=0x001f
-            };
-        }
-
-        macro_rules! control_codepoint {
-            () => {
-                c0_control_codepoint!() | 0x007f..=0x009f
-            };
-        }
-
-        macro_rules! whitespace_codepoint {
-            () => {
-                0x0009 | // SPEC: TAB,
-                0x000A | //       LF
-                0x000C | //       FF
-                0x000D | //       CR
-                0x0020   //       SPACE.
-            };
-        }
-
-        macro_rules! leading_surrogate_codepoint {
-            () => {
-                0xd800..=0xdbff
-            };
-        }
-        macro_rules! trailing_surrogate_codepoint {
-            () => {
-                0xdc00..=0xdfff
-            };
-        }
-        macro_rules! surrogate_codepoint {
-            () => {
-                leading_surrogate_codepoint!() | trailing_surrogate_codepoint!()
-            };
-        }
-
-        macro_rules! on_ascii_digit {
-            () => {
-                Some('0'..='9')
-            };
-            ($c:ident) => {
-                Some($c @ '0'..='9')
-            };
-        }
-
-        macro_rules! on_ascii_upper_hex_digit_alpha {
-            () => {
-                Some('A'..='F')
-            };
-            ($c:ident) => {
-                Some($c @ 'A'..='F')
-            };
-        }
-
-        macro_rules! on_ascii_lower_hex_digit_alpha {
-            () => {
-                Some('a'..='f')
-            };
-            ($c:ident) => {
-                Some($c @ 'a'..='f')
-            };
-        }
-
-        macro_rules! on_ascii_hex_digit {
-            () => {
-                on_ascii_digit!()
-                    | on_ascii_lower_hex_digit_alpha!()
-                    | on_ascii_upper_hex_digit_alpha!()
-            };
-            ($c:ident) => {
-                on_ascii_digit!($c)
-                    | on_ascii_lower_hex_digit_alpha!($c)
-                    | on_ascii_upper_hex_digit_alpha!($c)
-            };
-        }
-
-        macro_rules! on_ascii_upper_alpha {
-            () => {
-                Some('A'..='Z')
-            };
-            ($c:ident) => {
-                Some($c @ 'A'..='Z')
-            };
-        }
-
-        macro_rules! on_ascii_lower_alpha {
-            () => {
-                Some('a'..='z')
-            };
-            ($c:ident) => {
-                Some($c @ 'a'..='z')
-            };
-        }
-
-        macro_rules! on_ascii_alpha {
-            () => {
-                on_ascii_upper_alpha!() | on_ascii_lower_alpha!()
-            };
-            ($c:ident) => {
-                on_ascii_upper_alpha!($c) | on_ascii_lower_alpha!($c)
-            };
-        }
-
-        macro_rules! ascii_alphanumeric {
-            () => {
-                on_ascii_digit!() | on_ascii_alpha!()
-            };
-            ($c:ident) => {
-                on_ascii_digit!($c) | on_ascii_alpha!($c)
-            };
-        }
-
-        #[rustfmt::skip]
-        macro_rules! noncharacter {
-            () => {
-                (0xFDD0..=0xFDEF)
-                | 0xFFFE  | 0xFFFF  | 0x1FFFE | 0x1FFFF
-                | 0x2FFFE | 0x2FFFF | 0x3FFFE | 0x3FFFF
-                | 0x4FFFE | 0x4FFFF | 0x5FFFE | 0x5FFFF
-                | 0x6FFFE | 0x6FFFF | 0x7FFFE | 0x7FFFF
-                | 0x8FFFE | 0x8FFFF | 0x9FFFE | 0x9FFFF
-                | 0xAFFFE | 0xAFFFF | 0xBFFFE | 0xBFFFF
-                | 0xCFFFE | 0xCFFFF | 0xDFFFE | 0xDFFFF
-                | 0xEFFFE | 0xEFFFF | 0xFFFFE | 0xFFFFF
-                | 0x10FFFE| 0x10FFFF
-            };
+        if self.current_token() == Some(&Token::EndOfFile) {
+            return None;
         }
 
         loop {
-            if self.eof_emitted {
+            if self.token_emitted {
                 break;
             }
 
@@ -1176,6 +1180,6 @@ impl<'a> Tokenizer<'a> {
             }
         }
 
-        self.tokens.clone()
+        self.tokens.last()
     }
 }
