@@ -176,7 +176,7 @@ macro_rules! noncharacter {
 
 #[allow(unused)]
 #[derive(Debug, Copy, Clone)]
-enum State {
+pub enum State {
     Data,
     RcData,
     RawText,
@@ -398,7 +398,7 @@ impl Tokenizer {
         self.current_attribute = Some(attribute);
     }
 
-    fn switch_to(&mut self, state: State) {
+    pub fn switch_to(&mut self, state: State) {
         self.state = state;
     }
 

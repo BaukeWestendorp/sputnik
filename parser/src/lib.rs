@@ -35,8 +35,15 @@ enum InsertionMode {
     AfterAfterFrameset,
 }
 
+enum GenericParsingAlgorithm {
+    RawText,
+    RCData,
+}
+
 pub struct Parser {
     insertion_mode: InsertionMode,
+    original_insertion_mode: InsertionMode,
+    referenced_insertion_mode: Option<InsertionMode>,
     tokenizer: Tokenizer,
     reprocess_current_token: bool,
     document: Rc<Node>,
@@ -44,6 +51,7 @@ pub struct Parser {
     open_elements: Vec<Rc<Node>>,
     head_element_pointer: Option<Rc<Node>>,
     foster_parenting: bool,
+    scripting_flag: bool,
 }
 
 const fn is_parser_whitespace(string: char) -> bool {
@@ -57,12 +65,15 @@ impl Parser {
     pub fn new(input: &str) -> Self {
         Self {
             insertion_mode: InsertionMode::Initial,
+            original_insertion_mode: InsertionMode::Initial,
+            referenced_insertion_mode: None,
             tokenizer: Tokenizer::new(input),
             reprocess_current_token: false,
             document: Rc::new(Node::new(NodeType::Document {})),
             open_elements: Vec::new(),
             head_element_pointer: None,
             foster_parenting: false,
+            scripting_flag: false,
         }
     }
 
@@ -94,8 +105,12 @@ impl Parser {
         return target;
     }
 
-    fn put_element_in_stack_of_open_elements(&mut self, element: Rc<Node>) {
+    fn push_element_to_stack_of_open_elements(&mut self, element: Rc<Node>) {
         self.open_elements.push(element);
+    }
+
+    fn pop_current_element_off_stack_of_open_elements(&mut self) {
+        self.open_elements.pop();
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-a-character
@@ -171,7 +186,7 @@ impl Parser {
         // FIXME: Implement
 
         // SPEC: 4. Push element onto the stack of open elements so that it is the new current node.
-        self.put_element_in_stack_of_open_elements(element.clone());
+        self.push_element_to_stack_of_open_elements(element.clone());
 
         // SPEC: 5. Return element.
         element
@@ -180,35 +195,6 @@ impl Parser {
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element
     fn insert_html_element_for_token(&mut self, token: &Token) -> Rc<Node> {
         self.insert_foreign_element_for_token(token, None)
-    }
-
-    // SPECLINK: https://html.spec.whatwg.org/multipage/custom-elements.html#look-up-a-custom-element-definition
-    fn look_up_custom_element_definition(
-        &self,
-        _document: Rc<Node>,
-        namespace: Option<&str>,
-        _local_name: &str,
-        _is: Option<&str>,
-    ) -> Option<CustomElementDefinition> {
-        // SPEC: 1. If namespace is not the HTML namespace, return null.
-        if namespace != Some("http://www.w3.org/1999/xhtml") {
-            return None;
-        }
-
-        // SPEC: 2. If document's browsing context is null, return null.
-        // FIXME: Implement
-
-        // SPEC: 3. Let registry be document's relevant global object's CustomElementRegistry object.
-        // FIXME: Implement
-
-        // SPEC: 4. If there is custom element definition in registry with name and local name both equal to localName, return that custom element definition.
-        // FIXME: Implement
-
-        // SPEC: 5. If there is a custom element definition in registry with name equal to is and local name equal to localName, return that custom element definition.
-        // FIXME: Implement
-
-        // SPEC: 6. Return null.
-        None
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-create-element
@@ -389,7 +375,62 @@ impl Parser {
         Some(element_node)
     }
 
-    fn switch_insertion_mode(&mut self, insertion_mode: InsertionMode) {
+    // SPECLINK: https://html.spec.whatwg.org/multipage/custom-elements.html#look-up-a-custom-element-definition
+    fn look_up_custom_element_definition(
+        &self,
+        _document: Rc<Node>,
+        namespace: Option<&str>,
+        _local_name: &str,
+        _is: Option<&str>,
+    ) -> Option<CustomElementDefinition> {
+        // SPEC: 1. If namespace is not the HTML namespace, return null.
+        if namespace != Some("http://www.w3.org/1999/xhtml") {
+            return None;
+        }
+
+        // SPEC: 2. If document's browsing context is null, return null.
+        // FIXME: Implement
+
+        // SPEC: 3. Let registry be document's relevant global object's CustomElementRegistry object.
+        // FIXME: Implement
+
+        // SPEC: 4. If there is custom element definition in registry with name and local name both equal to localName, return that custom element definition.
+        // FIXME: Implement
+
+        // SPEC: 5. If there is a custom element definition in registry with name equal to is and local name equal to localName, return that custom element definition.
+        // FIXME: Implement
+
+        // SPEC: 6. Return null.
+        None
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#generic-rcdata-element-parsing-algorithm
+    fn follow_generic_parsing_algorithm(
+        &mut self,
+        algorithm: GenericParsingAlgorithm,
+        token: &Token,
+    ) {
+        // SPEC: 1. Insert an HTML element for the token.
+        self.insert_html_element_for_token(token);
+
+        // SPEC: 2. If the algorithm that was invoked is the generic raw text element parsing algorithm,
+        //          switch the tokenizer to the RAWTEXT state;
+        //          otherwise the algorithm invoked was the generic RCDATA element parsing algorithm,
+        //          switch the tokenizer to the RCDATA state.
+        match algorithm {
+            GenericParsingAlgorithm::RawText => todo!(),
+            GenericParsingAlgorithm::RCData => {
+                self.tokenizer.switch_to(tokenizer::State::RcData);
+            }
+        }
+
+        // SPEC: 3. Let the original insertion mode be the current insertion mode.
+        self.original_insertion_mode = self.insertion_mode;
+        // SPEC: 4. Then, switch the insertion mode to "text".
+        self.switch_insertion_mode_to(InsertionMode::Text);
+    }
+
+    fn switch_insertion_mode_to(&mut self, insertion_mode: InsertionMode) {
         self.insertion_mode = insertion_mode
     }
 
@@ -397,8 +438,13 @@ impl Parser {
         self.reprocess_current_token = true;
     }
 
-    fn process_insertion_mode_for_token(&mut self, token: &Token) {
-        match self.insertion_mode {
+    fn process_token(&mut self, token: &Token) {
+        let mode = match self.referenced_insertion_mode {
+            Some(insertion_mode) => insertion_mode,
+            None => self.insertion_mode,
+        };
+
+        match mode {
             InsertionMode::Initial => self.handle_initial_insertion_mode(token),
             InsertionMode::BeforeHtml => self.handle_before_html_insertion_mode(token),
             InsertionMode::BeforeHead => self.handle_before_head_insertion_mode(token),
@@ -406,7 +452,7 @@ impl Parser {
             InsertionMode::InHeadNoscript => todo!("InsertionMode::InHeadNoscript"),
             InsertionMode::AfterHead => todo!("InsertionMode::AfterHead"),
             InsertionMode::InBody => todo!("InsertionMode::InBody"),
-            InsertionMode::Text => todo!("InsertionMode::Text"),
+            InsertionMode::Text => self.handle_text_insertion_mode(token),
             InsertionMode::InTable => todo!("InsertionMode::InTable"),
             InsertionMode::InTableText => todo!("InsertionMode::InTableText"),
             InsertionMode::InCaption => todo!("InsertionMode::InCaption"),
@@ -423,6 +469,10 @@ impl Parser {
             InsertionMode::AfterAfterBody => todo!("InsertionMode::AfterAfterBody"),
             InsertionMode::AfterAfterFrameset => todo!("InsertionMode::AfterAfterFrameset"),
         }
+    }
+
+    fn process_token_using_rules_of(&mut self, insertion_mode: InsertionMode) {
+        self.referenced_insertion_mode = Some(insertion_mode);
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
@@ -485,7 +535,7 @@ impl Parser {
                 // FIXME: Implement
 
                 // SPEC: Then, switch the insertion mode to "before html".
-                self.switch_insertion_mode(InsertionMode::BeforeHtml);
+                self.switch_insertion_mode_to(InsertionMode::BeforeHtml);
             }
             _ => {
                 // SPEC: If the document is not an iframe srcdoc document, then this is a parse error;
@@ -494,7 +544,7 @@ impl Parser {
 
                 // SPEC: In any case, switch the insertion mode to "before html",
                 //       then reprocess the token.
-                self.switch_insertion_mode(InsertionMode::BeforeHtml);
+                self.switch_insertion_mode_to(InsertionMode::BeforeHtml);
                 self.reprocess_token();
             }
         }
@@ -524,9 +574,9 @@ impl Parser {
                 self.document.append_child(element.clone());
 
                 // SPEC: Put this element in the stack of open elements.
-                self.put_element_in_stack_of_open_elements(element);
+                self.push_element_to_stack_of_open_elements(element);
                 // SPEC: Switch the insertion mode to "before head".
-                self.switch_insertion_mode(InsertionMode::BeforeHead);
+                self.switch_insertion_mode_to(InsertionMode::BeforeHead);
             }
             Token::EndTag { name, .. }
                 if name == "head" || name == "body" || name == "html" || name == "br" =>
@@ -569,19 +619,109 @@ impl Parser {
                 // SPEC: Set the head element pointer to the newly created head element.
                 self.head_element_pointer = Some(element);
                 // SPEC: Switch the insertion mode to "in head".
-                self.switch_insertion_mode(InsertionMode::InHead);
+                self.switch_insertion_mode_to(InsertionMode::InHead);
                 // SPEC: Reprocess the current token.
                 self.reprocess_token();
             }
         }
     }
 
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead
     fn handle_in_head_insertion_mode(&mut self, token: &Token) {
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
+                // SPEC: Insert the character.
                 self.insert_character(*data);
             }
-            _ => todo!(),
+            Token::Comment { data } => {
+                // SPEC: Insert a comment.
+                self.insert_comment(data, None);
+            }
+            Token::Doctype { .. } => {
+                // SPEC: Parse error. Ignore the token.
+            }
+            Token::StartTag { name, .. } if name == "html" => {
+                // SPEC: Process the token using the rules for the "in body" insertion mode.
+                self.process_token_using_rules_of(InsertionMode::InBody)
+            }
+            Token::StartTag { name, .. }
+                if name == "base" || name == "basefont" || name == "bgsound" || name == "link" =>
+            {
+                todo!()
+            }
+            Token::StartTag { name, .. } if name == "meta" => {
+                todo!()
+            }
+            Token::StartTag { name, .. } if name == "title" => {
+                // SPEC: Follow the generic RCDATA element parsing algorithm.
+                self.follow_generic_parsing_algorithm(GenericParsingAlgorithm::RCData, token);
+            }
+            Token::StartTag { name, .. } if name == "noscript" && self.scripting_flag => {
+                todo!()
+            }
+            Token::StartTag { name, .. } if name == "noframes" || name == "style" => {
+                todo!()
+            }
+            Token::StartTag { name, .. } if name == "noscript" && self.scripting_flag => {
+                todo!()
+            }
+            Token::StartTag { name, .. } if name == "script" => {
+                todo!()
+            }
+            Token::EndTag { name, .. } if name == "head" => {
+                todo!()
+            }
+            Token::EndTag { name, .. } if name == "body" || name == "html" || name == "br" => {
+                todo!()
+            }
+            Token::StartTag { name, .. } if name == "template" => {
+                todo!()
+            }
+            Token::StartTag { name, .. } if name == "head" => {
+                todo!()
+            }
+            Token::EndTag { .. } => {
+                // SPEC: Parse error. Ignore the token.
+            }
+            _ => {
+                // SPEC: Pop the current node (which will be the head element) off the stack of open elements.
+                self.pop_current_element_off_stack_of_open_elements();
+
+                // SPEC: Switch the insertion mode to "after head".
+                self.switch_insertion_mode_to(InsertionMode::AfterHead);
+
+                // SPEC: Reprocess the token.
+                self.reprocess_token();
+            }
+        }
+    }
+
+    fn handle_text_insertion_mode(&mut self, token: &Token) {
+        match token {
+            Token::Character { data } => {
+                self.insert_character(*data);
+            }
+            Token::EndOfFile => {
+                // SPEC: Parse error.
+
+                // SPEC: If the current node is a script element, then set its already started to true.
+                // FIXME: Implement
+
+                // SPEC: Pop the current node off the stack of open elements.
+                self.pop_current_element_off_stack_of_open_elements();
+
+                // SPEC: Switch the insertion mode to the original insertion mode and reprocess the token.
+                self.switch_insertion_mode_to(self.original_insertion_mode);
+                self.reprocess_token();
+            }
+            Token::EndTag { name, .. } if name == "script" => todo!(),
+            _ => {
+                // SPEC: Pop the current node off the stack of open elements.
+                self.pop_current_element_off_stack_of_open_elements();
+
+                // SPEC: Switch the insertion mode to the original insertion mode.
+                self.switch_insertion_mode_to(self.original_insertion_mode);
+            }
         }
     }
 
@@ -593,7 +733,9 @@ impl Parser {
             eprintln!("[{:?}] {:?}", self.insertion_mode, token);
 
             let token = token.clone();
-            self.process_insertion_mode_for_token(&token);
+            self.process_token(&token);
+
+            self.reprocess_current_token = false;
         }
         self.document.clone().as_ref().to_owned()
     }
