@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use dom::custom_element_definition::CustomElementDefinition;
-use dom::node::{AssociatedValues, CustomElementState, Node, NodeType};
+use dom::node::{
+    AssociatedValues, Attr, Comment, CustomElementState, DocumentType, Element, Node, NodeType,
+};
 use tokenizer::{Token, Tokenizer};
 
 #[allow(unused)]
@@ -93,9 +95,7 @@ impl Parser {
         let adjusted_insertion_location = self.appropriate_place_for_inserting_node();
         // SPEC: 3. Create a Comment node whose data attribute is set to data
         //          and whose node document is the same as that of the node in which the adjusted insertion location finds itself.
-        let node = Node::new(NodeType::Comment {
-            data: data.to_string(),
-        });
+        let node = Node::new(NodeType::Comment(Comment::new(data)));
         // SPEC: 4. Insert the newly created node at the adjusted insertion location.
         if let Some(adjusted_insertion_location) = adjusted_insertion_location {
             adjusted_insertion_location.append_child(Rc::new(node));
@@ -197,21 +197,21 @@ impl Parser {
         //            custom element definition set to null,
         //            is value set to is,
         //            and node document set to document.
-        let mut node = Node::new(NodeType::Element {
-            attributes: HashMap::new(),
-            associated_values: AssociatedValues {
-                namespace: namespace.cloned(),
-                namespace_prefix: prefix.cloned(),
-                local_name: local_name.clone(),
-                custom_element_state: CustomElementState::Uncustomized,
-                custom_element_definition: None,
-                is: is.cloned(),
-            },
+        let associated_values = AssociatedValues {
+            namespace: namespace.cloned(),
+            namespace_prefix: prefix.cloned(),
             local_name: local_name.clone(),
-            namespace_uri: None,
-            prefix: None,
-            tag_name: "".to_string(),
-        });
+            custom_element_state: CustomElementState::Uncustomized,
+            custom_element_definition: None,
+            is: is.cloned(),
+        };
+        let mut node = Node::new(NodeType::Element(Element::new(
+            associated_values,
+            local_name.clone(),
+            None,
+            None,
+            String::new(),
+        )));
         node.owner_document = Some(document);
         result = Some(node);
 
@@ -288,23 +288,18 @@ impl Parser {
         //          If will execute script is true,
         //          set the synchronous custom elements flag;
         //          otherwise, leave it unset.
-        let mut element = match self.create_element(document, &local_name, None, None, is, false) {
-            Some(element) => element,
-            None => return None,
-        };
+        let mut element_node =
+            match self.create_element(document, &local_name, None, None, is, false) {
+                Some(element) => element,
+                None => return None,
+            };
 
         // SPEC: 10. Append each attribute in the given token to element.
-        if let NodeType::Element {
-            attributes: node_attributes,
-            ..
-        } = &mut element.node_type
-        {
+        if let NodeType::Element(element) = &mut element_node.node_type {
             for attr in attributes.iter() {
-                node_attributes.insert(
+                element.attributes.insert(
                     attr.name.clone(),
-                    NodeType::Attr {
-                        value: attr.value.clone(),
-                    },
+                    NodeType::Attr(Attr::new(attr.value.clone())),
                 );
             }
         }
@@ -339,7 +334,7 @@ impl Parser {
         // FIXME: Implement
 
         // SPEC: 15. Return element.
-        Some(element)
+        Some(element_node)
     }
 
     fn switch_insertion_mode(&mut self, insertion_mode: InsertionMode) {
@@ -390,12 +385,12 @@ impl Parser {
                         //       with its name set to the name given in the DOCTYPE token, or the empty string if the name was missing;
                         //       its public ID set to the public identifier given in the DOCTYPE token, or the empty string if the public identifier was missing;
                         //       and its system ID set to the system identifier given in the DOCTYPE token, or the empty string if the system identifier was missing.
-                        let doctype_node = Node::new(NodeType::DocumentType {
+                        let doctype_node = Node::new(NodeType::DocumentType(DocumentType::new(
                             // FIXME: These clones are quite ugly. Are they needed?
-                            name: name.clone().unwrap_or(String::new()),
-                            public_id: public_identifier.clone().unwrap_or(String::new()),
-                            system_id: system_identifier.clone().unwrap_or(String::new()),
-                        });
+                            name.clone().unwrap_or(String::new()),
+                            public_identifier.clone().unwrap_or(String::new()),
+                            system_identifier.clone().unwrap_or(String::new()),
+                        )));
                         self.document.append_child(Rc::new(doctype_node));
 
                         // SPEC: Then, if the document is not an iframe srcdoc document,

@@ -132,33 +132,88 @@ const NULL_NODE: Node = Node {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeType {
-    // SPECLINK: https://dom.spec.whatwg.org/#interface-element
-    Element {
-        associated_values: AssociatedValues,
-        namespace_uri: Option<String>,
-        prefix: Option<String>,
-        local_name: String,
-        tag_name: String,
-        attributes: HashMap<String, NodeType>, // FIXME: HashMap should be NamedNodeMap instead
-    },
-    // SPECLINK: https://dom.spec.whatwg.org/#interface-attr
-    Attr {
-        value: String,
-    },
+    Element(Element),
+    Attr(Attr),
     Text {},
     CDATASection {},
     ProcessingInstruction {},
-    // SPECLINK: https://dom.spec.whatwg.org/#interface-comment
-    Comment {
-        data: String,
-    },
+    Comment(Comment),
     Document {},
-    // SPECLINK: https://dom.spec.whatwg.org/#interface-documenttype
-    DocumentType {
-        name: String,
-        public_id: String,
-        system_id: String,
-    },
+    DocumentType(DocumentType),
     DocumentFragment {},
     Null,
+}
+
+// SPECLINK: https://dom.spec.whatwg.org/#interface-element
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Element {
+    pub associated_values: AssociatedValues,
+    pub namespace_uri: Option<String>,
+    pub prefix: Option<String>,
+    pub local_name: String,
+    pub tag_name: String,
+    pub attributes: HashMap<String, NodeType>, // FIXME: HashMap should be NamedNodeMap instead
+}
+
+impl Element {
+    pub fn new(
+        associated_values: AssociatedValues,
+        local_name: String,
+        namespace_uri: Option<String>,
+        prefix: Option<String>,
+        tag_name: String,
+    ) -> Self {
+        Self {
+            attributes: HashMap::new(),
+            associated_values,
+            local_name,
+            namespace_uri,
+            prefix,
+            tag_name,
+        }
+    }
+}
+
+// SPECLINK: https://dom.spec.whatwg.org/#interface-attr
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attr {
+    pub value: String,
+}
+
+impl Attr {
+    pub fn new(value: String) -> Self {
+        Self { value }
+    }
+}
+
+// SPECLINK: https://dom.spec.whatwg.org/#interface-comment
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Comment {
+    pub data: String,
+}
+
+impl Comment {
+    pub fn new(data: &str) -> Self {
+        Self {
+            data: data.to_string(),
+        }
+    }
+}
+
+// SPECLINK: https://dom.spec.whatwg.org/#interface-documenttype
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentType {
+    pub name: String,
+    pub public_id: String,
+    pub system_id: String,
+}
+
+impl DocumentType {
+    pub fn new(name: String, public_id: String, system_id: String) -> Self {
+        Self {
+            name,
+            public_id,
+            system_id,
+        }
+    }
 }
