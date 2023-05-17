@@ -19,31 +19,25 @@ pub struct Node {
     pub last_child: Option<Rc<Node>>,
     pub previous_sibling: Option<Rc<Node>>,
     pub next_sibling: Option<Rc<Node>>,
-}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AssociatedValues {
-    pub namespace: Option<String>,
-    pub namespace_prefix: Option<String>,
-    pub local_name: String,
-    pub custom_element_state: CustomElementState,
-    pub custom_element_definition: Option<CustomElementDefinition>,
-    pub is: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CustomElementState {
-    Undefined,
-    Failed,
-    Uncustomized,
-    Precustomized,
-    Custom,
+    pub document: Option<Rc<Node>>,
 }
 
 impl Default for Node {
     fn default() -> Self {
         NULL_NODE.clone()
     }
+}
+
+macro_rules! is_node_type {
+    ($fn_name:ident, $node_type:pat) => {
+        pub fn $fn_name(&self) -> bool {
+            if let $node_type = self.node_type {
+                return true;
+            }
+            false
+        }
+    };
 }
 
 impl Node {
@@ -113,6 +107,17 @@ impl Node {
             todo!();
         }
     }
+
+    is_node_type!(is_element, NodeType::Element(_));
+    is_node_type!(is_attr, NodeType::Attr(_));
+    is_node_type!(is_text, NodeType::Text(_));
+    is_node_type!(is_cdata_section, NodeType::CDATASection());
+    is_node_type!(is_processing_instruction, NodeType::ProcessingInstruction());
+    is_node_type!(is_comment, NodeType::Comment(_));
+    is_node_type!(is_document, NodeType::Document());
+    is_node_type!(is_document_type, NodeType::DocumentType(_));
+    is_node_type!(is_document_fragment, NodeType::DocumentFragment());
+    is_node_type!(is_null, NodeType::Null);
 }
 
 const NULL_NODE: Node = Node {
@@ -128,19 +133,39 @@ const NULL_NODE: Node = Node {
     last_child: None,
     previous_sibling: None,
     next_sibling: None,
+    document: None,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssociatedValues {
+    pub namespace: Option<String>,
+    pub namespace_prefix: Option<String>,
+    pub local_name: String,
+    pub custom_element_state: CustomElementState,
+    pub custom_element_definition: Option<CustomElementDefinition>,
+    pub is: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CustomElementState {
+    Undefined,
+    Failed,
+    Uncustomized,
+    Precustomized,
+    Custom,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeType {
     Element(Element),
     Attr(Attr),
-    Text {},
-    CDATASection {},
-    ProcessingInstruction {},
+    Text(Text),
+    CDATASection(),
+    ProcessingInstruction(),
     Comment(Comment),
-    Document {},
+    Document(),
     DocumentType(DocumentType),
-    DocumentFragment {},
+    DocumentFragment(),
     Null,
 }
 
@@ -183,6 +208,20 @@ pub struct Attr {
 impl Attr {
     pub fn new(value: String) -> Self {
         Self { value }
+    }
+}
+
+// SPECLINK: https://dom.spec.whatwg.org/#interface-text
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Text {
+    pub data: String,
+}
+
+impl Text {
+    pub fn new(data: &str) -> Self {
+        Self {
+            data: data.to_string(),
+        }
     }
 }
 

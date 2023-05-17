@@ -3,6 +3,7 @@ use std::rc::Rc;
 use dom::custom_element_definition::CustomElementDefinition;
 use dom::node::{
     AssociatedValues, Attr, Comment, CustomElementState, DocumentType, Element, Node, NodeType,
+    Text,
 };
 use tokenizer::{Token, Tokenizer};
 
@@ -95,6 +96,33 @@ impl Parser {
 
     fn put_element_in_stack_of_open_elements(&mut self, element: Rc<Node>) {
         self.open_elements.push(element);
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-a-character
+    fn insert_character(&self, data: char) {
+        // SPEC: 2. Let the adjusted insertion location be the appropriate place for inserting a node.
+        if let Some(adjusted_insertion_location) = self.appropriate_place_for_inserting_node(None) {
+            // SPEC: 3. If the adjusted insertion location is in a Document node, then return.
+            if adjusted_insertion_location.is_document() {
+                return;
+            }
+
+            // SPEC: 4. If there is a Text node immediately before the adjusted insertion location,
+            //          then append data to that Text node's data.
+            if let Some(last_child) = adjusted_insertion_location.last_child.clone() {
+                if let NodeType::Text(mut text) = last_child.node_type.clone() {
+                    text.data.push(data)
+                }
+            } else {
+                // SPEC: 5. Otherwise, create a new Text node
+                //          whose data is data
+                //          and whose node document is the same as that of the element in which the adjusted insertion location finds itself,
+                //          and insert the newly created node at the adjusted insertion location.
+                let mut text_node = Node::new(NodeType::Text(Text::new(data.to_string().as_str())));
+                text_node.owner_document = adjusted_insertion_location.owner_document.clone();
+                adjusted_insertion_location.append_child(Rc::new(text_node));
+            }
+        }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-a-comment
@@ -374,7 +402,7 @@ impl Parser {
             InsertionMode::Initial => self.handle_initial_insertion_mode(token),
             InsertionMode::BeforeHtml => self.handle_before_html_insertion_mode(token),
             InsertionMode::BeforeHead => self.handle_before_head_insertion_mode(token),
-            InsertionMode::InHead => todo!("InsertionMode::InHead"),
+            InsertionMode::InHead => self.handle_in_head_insertion_mode(token),
             InsertionMode::InHeadNoscript => todo!("InsertionMode::InHeadNoscript"),
             InsertionMode::AfterHead => todo!("InsertionMode::AfterHead"),
             InsertionMode::InBody => todo!("InsertionMode::InBody"),
@@ -545,6 +573,15 @@ impl Parser {
                 // SPEC: Reprocess the current token.
                 self.reprocess_token();
             }
+        }
+    }
+
+    fn handle_in_head_insertion_mode(&mut self, token: &Token) {
+        match token {
+            Token::Character { data } if is_parser_whitespace(*data) => {
+                self.insert_character(*data);
+            }
+            _ => todo!(),
         }
     }
 
