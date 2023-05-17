@@ -369,6 +369,185 @@ impl Parser {
         self.reprocess_current_token = true;
     }
 
+    fn process_insertion_mode_for_token(&mut self, token: &Token) {
+        match self.insertion_mode {
+            InsertionMode::Initial => self.handle_initial_insertion_mode(token),
+            InsertionMode::BeforeHtml => self.handle_before_html_insertion_mode(token),
+            InsertionMode::BeforeHead => self.handle_before_head_insertion_mode(token),
+            InsertionMode::InHead => todo!("InsertionMode::InHead"),
+            InsertionMode::InHeadNoscript => todo!("InsertionMode::InHeadNoscript"),
+            InsertionMode::AfterHead => todo!("InsertionMode::AfterHead"),
+            InsertionMode::InBody => todo!("InsertionMode::InBody"),
+            InsertionMode::Text => todo!("InsertionMode::Text"),
+            InsertionMode::InTable => todo!("InsertionMode::InTable"),
+            InsertionMode::InTableText => todo!("InsertionMode::InTableText"),
+            InsertionMode::InCaption => todo!("InsertionMode::InCaption"),
+            InsertionMode::InColumnGroup => todo!("InsertionMode::InColumnGroup"),
+            InsertionMode::InTableBody => todo!("InsertionMode::InTableBody"),
+            InsertionMode::InRow => todo!("InsertionMode::InRow"),
+            InsertionMode::InCell => todo!("InsertionMode::InCell"),
+            InsertionMode::InSelect => todo!("InsertionMode::InSelect"),
+            InsertionMode::InSelectInTable => todo!("InsertionMode::InSelectInTable"),
+            InsertionMode::InTemplate => todo!("InsertionMode::InTemplate"),
+            InsertionMode::AfterBody => todo!("InsertionMode::AfterBody"),
+            InsertionMode::InFrameset => todo!("InsertionMode::InFrameset"),
+            InsertionMode::AfterFrameset => todo!("InsertionMode::AfterFrameset"),
+            InsertionMode::AfterAfterBody => todo!("InsertionMode::AfterAfterBody"),
+            InsertionMode::AfterAfterFrameset => todo!("InsertionMode::AfterAfterFrameset"),
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
+    fn handle_initial_insertion_mode(&mut self, token: &Token) {
+        match token {
+            Token::Character { data } if is_parser_whitespace(*data) => {
+                // SPEC: Ignore the token.
+            }
+            Token::Comment { data } => {
+                // SPEC: Insert a comment as the last child of the Document object.
+                let new_data = data.clone();
+                self.insert_comment(new_data.as_str(), None);
+            }
+            Token::Doctype {
+                name,
+                public_identifier,
+                system_identifier,
+                ..
+            } => {
+                // SPEC: If the DOCTYPE token's name is not "html",
+                //       or the token's public identifier is not missing,
+                //       or the token's system identifier is neither missing nor "about:legacy-compat",
+                if name != &Some(String::from("html"))
+                    || public_identifier != &None
+                    || (system_identifier != &None
+                        && system_identifier != &Some(String::from("about:legacy-compat")))
+                {
+                    // SPEC: then there is a parse error.
+                    todo!()
+                }
+
+                // SPEC: Append a DocumentType node to the Document node,
+                //       with its name set to the name given in the DOCTYPE token, or the empty string if the name was missing;
+                //       its public ID set to the public identifier given in the DOCTYPE token, or the empty string if the public identifier was missing;
+                //       and its system ID set to the system identifier given in the DOCTYPE token, or the empty string if the system identifier was missing.
+                let doctype_node = Node::new(NodeType::DocumentType(DocumentType::new(
+                    // FIXME: These clones are quite ugly. Are they needed?
+                    name.clone().unwrap_or(String::new()),
+                    public_identifier.clone().unwrap_or(String::new()),
+                    system_identifier.clone().unwrap_or(String::new()),
+                )));
+                self.document.append_child(Rc::new(doctype_node));
+
+                // SPEC: Then, if the document is not an iframe srcdoc document,
+                //       and the parser cannot change the mode flag is false,
+                //       and the DOCTYPE token matches one of the conditions in the following list,
+                //       then set the Document to quirks mode:
+                // FIXME: Implement
+
+                // SPEC: Otherwise, if the document is not an iframe srcdoc document,
+                //       and the parser cannot change the mode flag is false,
+                //       and the DOCTYPE token matches one of the conditions in the following list,
+                //       then then set the Document to limited-quirks mode:
+                // FIXME: Implement
+
+                // SPEC: The system identifier and public identifier strings must be compared to
+                //       the values given in the lists above in an ASCII case-insensitive manner.
+                //       A system identifier whose value is the empty string
+                //       is not considered missing for the purposes of the conditions above.
+                // FIXME: Implement
+
+                // SPEC: Then, switch the insertion mode to "before html".
+                self.switch_insertion_mode(InsertionMode::BeforeHtml);
+            }
+            _ => {
+                // SPEC: If the document is not an iframe srcdoc document, then this is a parse error;
+                //       if the parser cannot change the mode flag is false, set the Document to quirks mode.
+                // FIXME: Implement
+
+                // SPEC: In any case, switch the insertion mode to "before html",
+                //       then reprocess the token.
+                self.switch_insertion_mode(InsertionMode::BeforeHtml);
+                self.reprocess_token();
+            }
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-before-html-insertion-mode
+    fn handle_before_html_insertion_mode(&mut self, token: &Token) {
+        match token {
+            Token::Doctype { .. } => {
+                // SPEC: Parse error. Ignore the token.
+                // FIXME: Do something with the error?
+            }
+            Token::Comment { .. } => todo!(),
+            Token::Character { data } if is_parser_whitespace(*data) => {
+                // SPEC: Ignore the token.
+            }
+            Token::StartTag { name, .. } if name == "html" => {
+                // SPEC: Create an element for the token FIXME{in the HTML namespace},
+                //       with the Document as the intended parent.
+                let token = token.clone();
+                let element = Rc::new(
+                    self.create_element_for_token(&token, None, Some(self.document.clone()))
+                        .unwrap(),
+                ); // FIXME: We shouldn't unwrap here. Propogating errors sounds like a good idea here. (or not as the parser might stop?)
+
+                // SPEC: Append it to the Document object.
+                self.document.append_child(element.clone());
+
+                // SPEC: Put this element in the stack of open elements.
+                self.put_element_in_stack_of_open_elements(element);
+                // SPEC: Switch the insertion mode to "before head".
+                self.switch_insertion_mode(InsertionMode::BeforeHead);
+            }
+            Token::EndTag { name, .. }
+                if name == "head" || name == "body" || name == "html" || name == "br" =>
+            {
+                todo!();
+            }
+            Token::EndTag { .. } => {
+                todo!();
+            }
+            _ => {
+                todo!();
+            }
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-before-head-insertion-mode
+    fn handle_before_head_insertion_mode(&mut self, token: &Token) {
+        match token {
+            Token::Character { data } if is_parser_whitespace(*data) => {
+                // SPEC: Ignore the token.
+            }
+            Token::Comment { .. } => todo!(),
+            Token::Doctype { .. } => todo!(),
+            Token::StartTag { name, .. } if name == "html" => todo!(),
+            Token::StartTag { name, .. } if name == "head" => {
+                let token = token.clone();
+                self.insert_html_element_for_token(&token);
+            }
+            Token::EndTag { name, .. } if name == "head" || name == "body" || name == "br" => {
+                todo!()
+            }
+            Token::EndTag { .. } => todo!(),
+            _ => {
+                // SPEC: Insert an HTML element for a "head" start tag token with no attributes.
+                let element = self.insert_html_element_for_token(&Token::StartTag {
+                    name: String::from("head"),
+                    self_closing: false,
+                    attributes: Vec::new(),
+                });
+                // SPEC: Set the head element pointer to the newly created head element.
+                self.head_element_pointer = Some(element);
+                // SPEC: Switch the insertion mode to "in head".
+                self.switch_insertion_mode(InsertionMode::InHead);
+                // SPEC: Reprocess the current token.
+                self.reprocess_token();
+            }
+        }
+    }
+
     pub fn parse(&mut self) -> Node {
         while let Some(token) = match self.reprocess_current_token {
             true => self.tokenizer.current_token(),
@@ -376,176 +555,8 @@ impl Parser {
         } {
             eprintln!("[{:?}] {:?}", self.insertion_mode, token);
 
-            match self.insertion_mode {
-                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
-                InsertionMode::Initial => match token {
-                    Token::Character { data } if is_parser_whitespace(*data) => {
-                        // SPEC: Ignore the token.
-                    }
-                    Token::Comment { data } => {
-                        // SPEC: Insert a comment as the last child of the Document object.
-                        let new_data = data.clone();
-                        self.insert_comment(new_data.as_str(), None);
-                    }
-                    Token::Doctype {
-                        name,
-                        public_identifier,
-                        system_identifier,
-                        ..
-                    } => {
-                        // SPEC: If the DOCTYPE token's name is not "html",
-                        //       or the token's public identifier is not missing,
-                        //       or the token's system identifier is neither missing nor "about:legacy-compat",
-                        if name != &Some(String::from("html"))
-                            || public_identifier != &None
-                            || (system_identifier != &None
-                                && system_identifier != &Some(String::from("about:legacy-compat")))
-                        {
-                            // SPEC: then there is a parse error.
-                            todo!()
-                        }
-
-                        // SPEC: Append a DocumentType node to the Document node,
-                        //       with its name set to the name given in the DOCTYPE token, or the empty string if the name was missing;
-                        //       its public ID set to the public identifier given in the DOCTYPE token, or the empty string if the public identifier was missing;
-                        //       and its system ID set to the system identifier given in the DOCTYPE token, or the empty string if the system identifier was missing.
-                        let doctype_node = Node::new(NodeType::DocumentType(DocumentType::new(
-                            // FIXME: These clones are quite ugly. Are they needed?
-                            name.clone().unwrap_or(String::new()),
-                            public_identifier.clone().unwrap_or(String::new()),
-                            system_identifier.clone().unwrap_or(String::new()),
-                        )));
-                        self.document.append_child(Rc::new(doctype_node));
-
-                        // SPEC: Then, if the document is not an iframe srcdoc document,
-                        //       and the parser cannot change the mode flag is false,
-                        //       and the DOCTYPE token matches one of the conditions in the following list,
-                        //       then set the Document to quirks mode:
-                        // FIXME: Implement
-
-                        // SPEC: Otherwise, if the document is not an iframe srcdoc document,
-                        //       and the parser cannot change the mode flag is false,
-                        //       and the DOCTYPE token matches one of the conditions in the following list,
-                        //       then then set the Document to limited-quirks mode:
-                        // FIXME: Implement
-
-                        // SPEC: The system identifier and public identifier strings must be compared to
-                        //       the values given in the lists above in an ASCII case-insensitive manner.
-                        //       A system identifier whose value is the empty string
-                        //       is not considered missing for the purposes of the conditions above.
-                        // FIXME: Implement
-
-                        // SPEC: Then, switch the insertion mode to "before html".
-                        self.switch_insertion_mode(InsertionMode::BeforeHtml);
-                    }
-                    _ => {
-                        // SPEC: If the document is not an iframe srcdoc document, then this is a parse error;
-                        //       if the parser cannot change the mode flag is false, set the Document to quirks mode.
-                        // FIXME: Implement
-
-                        // SPEC: In any case, switch the insertion mode to "before html",
-                        //       then reprocess the token.
-                        self.switch_insertion_mode(InsertionMode::BeforeHtml);
-                        self.reprocess_token();
-                    }
-                },
-                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-before-html-insertion-mode
-                InsertionMode::BeforeHtml => match token {
-                    Token::Doctype { .. } => {
-                        // SPEC: Parse error. Ignore the token.
-                        // FIXME: Do something with the error?
-                    }
-                    Token::Comment { .. } => todo!(),
-                    Token::Character { data } if is_parser_whitespace(*data) => {
-                        // SPEC: Ignore the token.
-                    }
-                    Token::StartTag { name, .. } if name == "html" => {
-                        // SPEC: Create an element for the token FIXME{in the HTML namespace},
-                        //       with the Document as the intended parent.
-                        let token = token.clone();
-                        let element = Rc::new(
-                            self.create_element_for_token(
-                                &token,
-                                None,
-                                Some(self.document.clone()),
-                            )
-                            .unwrap(),
-                        ); // FIXME: We shouldn't unwrap here. Propogating errors sounds like a good idea here. (or not as the parser might stop?)
-
-                        // SPEC: Append it to the Document object.
-                        self.document.append_child(element.clone());
-
-                        // SPEC: Put this element in the stack of open elements.
-                        self.put_element_in_stack_of_open_elements(element);
-                        // SPEC: Switch the insertion mode to "before head".
-                        self.switch_insertion_mode(InsertionMode::BeforeHead);
-                    }
-                    Token::EndTag { name, .. }
-                        if name == "head" || name == "body" || name == "html" || name == "br" =>
-                    {
-                        todo!();
-                    }
-                    Token::EndTag { .. } => {
-                        todo!();
-                    }
-                    _ => {
-                        todo!();
-                    }
-                },
-                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-before-head-insertion-mode
-                InsertionMode::BeforeHead => match token {
-                    Token::Character { data } if is_parser_whitespace(*data) => {
-                        // SPEC: Ignore the token.
-                    }
-                    Token::Comment { .. } => todo!(),
-                    Token::Doctype { .. } => todo!(),
-                    Token::StartTag { name, .. } if name == "html" => todo!(),
-                    Token::StartTag { name, .. } if name == "head" => {
-                        let token = token.clone();
-                        self.insert_html_element_for_token(&token);
-                    }
-                    Token::EndTag { name, .. }
-                        if name == "head" || name == "body" || name == "br" =>
-                    {
-                        todo!()
-                    }
-                    Token::EndTag { .. } => todo!(),
-                    _ => {
-                        // SPEC: Insert an HTML element for a "head" start tag token with no attributes.
-                        let element = self.insert_html_element_for_token(&Token::StartTag {
-                            name: String::from("head"),
-                            self_closing: false,
-                            attributes: Vec::new(),
-                        });
-                        // SPEC: Set the head element pointer to the newly created head element.
-                        self.head_element_pointer = Some(element);
-                        // SPEC: Switch the insertion mode to "in head".
-                        self.switch_insertion_mode(InsertionMode::InHead);
-                        // SPEC: Reprocess the current token.
-                        self.reprocess_token();
-                    }
-                },
-                InsertionMode::InHead => todo!("InsertionMode::InHead"),
-                InsertionMode::InHeadNoscript => todo!("InsertionMode::InHeadNoscript"),
-                InsertionMode::AfterHead => todo!("InsertionMode::AfterHead"),
-                InsertionMode::InBody => todo!("InsertionMode::InBody"),
-                InsertionMode::Text => todo!("InsertionMode::Text"),
-                InsertionMode::InTable => todo!("InsertionMode::InTable"),
-                InsertionMode::InTableText => todo!("InsertionMode::InTableText"),
-                InsertionMode::InCaption => todo!("InsertionMode::InCaption"),
-                InsertionMode::InColumnGroup => todo!("InsertionMode::InColumnGroup"),
-                InsertionMode::InTableBody => todo!("InsertionMode::InTableBody"),
-                InsertionMode::InRow => todo!("InsertionMode::InRow"),
-                InsertionMode::InCell => todo!("InsertionMode::InCell"),
-                InsertionMode::InSelect => todo!("InsertionMode::InSelect"),
-                InsertionMode::InSelectInTable => todo!("InsertionMode::InSelectInTable"),
-                InsertionMode::InTemplate => todo!("InsertionMode::InTemplate"),
-                InsertionMode::AfterBody => todo!("InsertionMode::AfterBody"),
-                InsertionMode::InFrameset => todo!("InsertionMode::InFrameset"),
-                InsertionMode::AfterFrameset => todo!("InsertionMode::AfterFrameset"),
-                InsertionMode::AfterAfterBody => todo!("InsertionMode::AfterAfterBody"),
-                InsertionMode::AfterAfterFrameset => todo!("InsertionMode::AfterAfterFrameset"),
-            }
+            let token = token.clone();
+            self.process_insertion_mode_for_token(&token);
         }
         self.document.clone().as_ref().to_owned()
     }
