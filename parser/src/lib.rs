@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use dom::custom_element_definition::CustomElementDefinition;
@@ -40,6 +39,7 @@ pub struct Parser {
     tokenizer: Tokenizer,
     reprocess_current_token: bool,
     document: Rc<Node>,
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#stack-of-open-elements
     open_elements: Vec<Rc<Node>>,
     head_element_pointer: Option<Rc<Node>>,
     foster_parenting: bool,
@@ -65,7 +65,9 @@ impl Parser {
         }
     }
 
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#current-node
     fn current_node(&self) -> Option<Rc<Node>> {
+        // SPEC: The current node is the bottommost node in this stack of open elements.
         self.open_elements.last().cloned()
     }
 
@@ -95,11 +97,14 @@ impl Parser {
         self.open_elements.push(element);
     }
 
-    fn insert_comment(&self, data: &str) {
-        // SPEC: 2. If position was specified, then let the adjusted insertion location be position.
-        // FIXME: Implement
-        // SPEC:    Otherwise, let adjusted insertion location be the appropriate place for inserting a node.
-        let adjusted_insertion_location = self.appropriate_place_for_inserting_node(None);
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-a-comment
+    fn insert_comment(&self, data: &str, position: Option<Rc<Node>>) {
+        let adjusted_insertion_location = match position {
+            // SPEC: 2. If position was specified, then let the adjusted insertion location be position.
+            Some(position) => Some(position),
+            // SPEC:    Otherwise, let adjusted insertion location be the appropriate place for inserting a node.
+            None => self.appropriate_place_for_inserting_node(None),
+        };
         // SPEC: 3. Create a Comment node whose data attribute is set to data
         //          and whose node document is the same as that of the node in which the adjusted insertion location finds itself.
         let node = Node::new(NodeType::Comment(Comment::new(data)));
@@ -109,7 +114,12 @@ impl Parser {
         }
     }
 
-    fn insert_html_element_for_token(&mut self, token: &Token) -> Rc<Node> {
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-a-foreign-element
+    fn insert_foreign_element_for_token(
+        &mut self,
+        token: &Token,
+        _namespace: Option<&String>,
+    ) -> Rc<Node> {
         // SPEC: 1. Let the adjusted insertion location be the appropriate place for inserting a node.
         let adjusted_insert_location = self.appropriate_place_for_inserting_node(None).unwrap();
 
@@ -139,6 +149,12 @@ impl Parser {
         element
     }
 
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element
+    fn insert_html_element_for_token(&mut self, token: &Token) -> Rc<Node> {
+        self.insert_foreign_element_for_token(token, None)
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/custom-elements.html#look-up-a-custom-element-definition
     fn look_up_custom_element_definition(
         &self,
         _document: Rc<Node>,
@@ -167,6 +183,7 @@ impl Parser {
         None
     }
 
+    // SPECLINK: https://dom.spec.whatwg.org/#concept-create-element
     fn create_element(
         &self,
         document: Rc<Node>,
@@ -177,13 +194,11 @@ impl Parser {
         _synchronous_custom_element: bool,
     ) -> Option<Node> {
         // SPEC: 3. Let result be null.
-        #[allow(unused)]
-        let mut result = None;
+        // let mut result = None;
 
         // SPEC: 4. Let definition be the result of looking up a custom element definition given document, namespace, localName, and is.
-        #[allow(unused)]
-        let definition =
-            self.look_up_custom_element_definition(document.clone(), namespace, local_name, is);
+        // let definition =
+        //     self.look_up_custom_element_definition(document.clone(), namespace, local_name, is);
 
         // SPEC: 5. If definition is non-null,
         //          and definition's name is not equal to its local name
@@ -220,7 +235,8 @@ impl Parser {
             String::new(),
         )));
         node.owner_document = Some(document);
-        result = Some(node);
+
+        let result = Some(node);
 
         // SPEC: 7.3. If namespace is the HTML namespace,
         //            and either localName is a valid custom element name or is is non-null,
@@ -231,6 +247,7 @@ impl Parser {
         result
     }
 
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
     fn create_element_for_token(
         &self,
         token: &Token,
@@ -368,7 +385,7 @@ impl Parser {
                     Token::Comment { data } => {
                         // SPEC: Insert a comment as the last child of the Document object.
                         let new_data = data.clone();
-                        self.insert_comment(new_data.as_str());
+                        self.insert_comment(new_data.as_str(), None);
                     }
                     Token::Doctype {
                         name,
