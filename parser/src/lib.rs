@@ -118,7 +118,7 @@ impl Parser {
     fn insert_foreign_element_for_token(
         &mut self,
         token: &Token,
-        _namespace: Option<&String>,
+        _namespace: Option<&str>,
     ) -> Rc<Node> {
         // SPEC: 1. Let the adjusted insertion location be the appropriate place for inserting a node.
         let adjusted_insert_location = self.appropriate_place_for_inserting_node(None).unwrap();
@@ -158,12 +158,12 @@ impl Parser {
     fn look_up_custom_element_definition(
         &self,
         _document: Rc<Node>,
-        namespace: Option<&String>,
-        _local_name: &String,
-        _is: Option<&String>,
+        namespace: Option<&str>,
+        _local_name: &str,
+        _is: Option<&str>,
     ) -> Option<CustomElementDefinition> {
         // SPEC: 1. If namespace is not the HTML namespace, return null.
-        if namespace != Some(&String::from("http://www.w3.org/1999/xhtml")) {
+        if namespace != Some("http://www.w3.org/1999/xhtml") {
             return None;
         }
 
@@ -187,10 +187,10 @@ impl Parser {
     fn create_element(
         &self,
         document: Rc<Node>,
-        local_name: &String,
-        namespace: Option<&String>,
-        prefix: Option<&String>,
-        is: Option<&String>,
+        local_name: &str,
+        namespace: Option<&str>,
+        prefix: Option<&str>,
+        is: Option<&str>,
         _synchronous_custom_element: bool,
     ) -> Option<Node> {
         // SPEC: 3. Let result be null.
@@ -220,16 +220,16 @@ impl Parser {
         //            is value set to is,
         //            and node document set to document.
         let associated_values = AssociatedValues {
-            namespace: namespace.cloned(),
-            namespace_prefix: prefix.cloned(),
-            local_name: local_name.clone(),
+            namespace: namespace.map(str::to_string),
+            namespace_prefix: prefix.map(str::to_string),
+            local_name: local_name.to_string(),
             custom_element_state: CustomElementState::Uncustomized,
             custom_element_definition: None,
-            is: is.cloned(),
+            is: is.map(str::to_string),
         };
         let mut node = Node::new(NodeType::Element(Element::new(
             associated_values,
-            local_name.clone(),
+            local_name.to_string(),
             None,
             None,
             String::new(),
@@ -251,7 +251,7 @@ impl Parser {
     fn create_element_for_token(
         &self,
         token: &Token,
-        namespace: Option<&String>,
+        namespace: Option<&str>,
         _parent: Option<Rc<Node>>,
     ) -> Option<Node> {
         // SPEC: 1. If the active speculative HTML parser is not null,
@@ -277,7 +277,7 @@ impl Parser {
                 name, attributes, ..
             } => {
                 let is = attributes.iter().find_map(|attr| match attr.name.as_str() {
-                    "is" => Some(&attr.value),
+                    "is" => Some(attr.value.as_str()),
                     _ => None,
                 });
 
