@@ -69,10 +69,17 @@ impl Parser {
         self.open_elements.last().cloned()
     }
 
-    fn appropriate_place_for_inserting_node(&self) -> Option<Rc<Node>> {
-        // SPEC: 1. If there was an override target specified, then let target be the override target.
-        // FIXME: Implement
-        let target = self.current_node();
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#appropriate-place-for-inserting-a-node
+    fn appropriate_place_for_inserting_node(
+        &self,
+        override_target: Option<Rc<Node>>,
+    ) -> Option<Rc<Node>> {
+        let target = match override_target {
+            // SPEC: 1. If there was an override target specified, then let target be the override target.
+            Some(override_target) => Some(override_target),
+            // SPEC: Otherwise, let target be the current node.
+            None => self.current_node(),
+        };
 
         // SPEC: 2. Determine the adjusted insertion location using the first matching steps from the following list:
         if self.foster_parenting {
@@ -92,7 +99,7 @@ impl Parser {
         // SPEC: 2. If position was specified, then let the adjusted insertion location be position.
         // FIXME: Implement
         // SPEC:    Otherwise, let adjusted insertion location be the appropriate place for inserting a node.
-        let adjusted_insertion_location = self.appropriate_place_for_inserting_node();
+        let adjusted_insertion_location = self.appropriate_place_for_inserting_node(None);
         // SPEC: 3. Create a Comment node whose data attribute is set to data
         //          and whose node document is the same as that of the node in which the adjusted insertion location finds itself.
         let node = Node::new(NodeType::Comment(Comment::new(data)));
@@ -104,7 +111,7 @@ impl Parser {
 
     fn insert_html_element_for_token(&mut self, token: &Token) -> Rc<Node> {
         // SPEC: 1. Let the adjusted insertion location be the appropriate place for inserting a node.
-        let adjusted_insert_location = self.appropriate_place_for_inserting_node().unwrap();
+        let adjusted_insert_location = self.appropriate_place_for_inserting_node(None).unwrap();
 
         // SPEC: 2. Let element be the result of creating an element for the token in the given namespace,
         //          with the intended parent being the element in which the adjusted insertion location finds itself.
