@@ -40,6 +40,11 @@ enum GenericParsingAlgorithm {
     RCData,
 }
 
+enum FramesetState {
+    Ok,
+    NotOk,
+}
+
 pub struct Parser {
     insertion_mode: InsertionMode,
     original_insertion_mode: InsertionMode,
@@ -52,6 +57,7 @@ pub struct Parser {
     head_element_pointer: Option<Rc<Node>>,
     foster_parenting: bool,
     scripting_flag: bool,
+    frameset_ok: FramesetState,
 }
 
 const fn is_parser_whitespace(string: char) -> bool {
@@ -74,6 +80,7 @@ impl Parser {
             head_element_pointer: None,
             foster_parenting: false,
             scripting_flag: false,
+            frameset_ok: FramesetState::Ok,
         }
     }
 
@@ -111,6 +118,12 @@ impl Parser {
 
     fn pop_current_element_off_stack_of_open_elements(&mut self) {
         self.open_elements.pop();
+    }
+
+    fn remove_element_from_stack_of_open_elements(&mut self, element: Rc<Node>) {
+        if let Some(index) = self.open_elements.iter().position(|e| *e == element) {
+            self.open_elements.remove(index);
+        }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-a-character
@@ -450,7 +463,7 @@ impl Parser {
             InsertionMode::BeforeHead => self.handle_before_head_insertion_mode(token),
             InsertionMode::InHead => self.handle_in_head_insertion_mode(token),
             InsertionMode::InHeadNoscript => todo!("InsertionMode::InHeadNoscript"),
-            InsertionMode::AfterHead => todo!("InsertionMode::AfterHead"),
+            InsertionMode::AfterHead => self.handle_after_head_insertion_mode(token),
             InsertionMode::InBody => todo!("InsertionMode::InBody"),
             InsertionMode::Text => self.handle_text_insertion_mode(token),
             InsertionMode::InTable => todo!("InsertionMode::InTable"),
@@ -696,6 +709,100 @@ impl Parser {
         }
     }
 
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-after-head-insertion-mode
+    fn handle_after_head_insertion_mode(&mut self, token: &Token) {
+        match token {
+            Token::Character { data } if is_parser_whitespace(*data) => {
+                // SPEC: Insert the character.
+                self.insert_character(*data);
+            }
+            Token::Comment { data } => {
+                // SPEC: Insert a comment.
+                self.insert_comment(data, None);
+            }
+            Token::Doctype { .. } => {
+                // SPEC: Parse error. Ignore the token.
+            }
+            Token::StartTag { name, .. } if name == "html" => {
+                // SPEC: Process the token using the rules for the "in body" insertion mode.
+                self.process_token_using_rules_of(InsertionMode::InBody);
+            }
+            Token::StartTag { name, .. } if name == "body" => {
+                // SPEC: Insert an HTML element for the token.
+                self.insert_html_element_for_token(token);
+
+                // SPEC: Set the frameset-ok flag to "not ok".
+                self.frameset_ok = FramesetState::NotOk;
+
+                // SPEC: Switch the insertion mode to "in body".
+                self.switch_insertion_mode_to(InsertionMode::InBody);
+            }
+            Token::StartTag { name, .. } if name == "frameset" => {
+                // SPEC: Insert an HTML element for the token.
+                self.insert_html_element_for_token(token);
+
+                // SPEC: Switch the insertion mode to "in frameset".
+                self.switch_insertion_mode_to(InsertionMode::InFrameset);
+            }
+            Token::StartTag { name, .. }
+                if name == "base"
+                    || name == "basefont"
+                    || name == "bgsound"
+                    || name == "link"
+                    || name == "meta"
+                    || name == "noframes"
+                    || name == "script"
+                    || name == "style"
+                    || name == "template"
+                    || name == "title" =>
+            {
+                // SPEC: Parse error.
+
+                // SPEC: Push the node pointed to by the head element pointer onto the stack of open elements.
+                if let Some(head_element_pointer) = self.head_element_pointer.clone() {
+                    self.push_element_to_stack_of_open_elements(head_element_pointer);
+                }
+
+                // SPEC: Process the token using the rules for the "in head" insertion mode.
+                self.process_token_using_rules_of(InsertionMode::InHead);
+
+                // SPEC: Remove the node pointed to by the head element pointer from the stack of open elements.
+                //       (It might not be the current node at this point.)
+                if let Some(head_element_pointer) = self.head_element_pointer.clone() {
+                    self.remove_element_from_stack_of_open_elements(head_element_pointer);
+                }
+            }
+            Token::EndTag { name, .. } if name == "template" => {
+                // SPEC: Process the token using the rules for the "in head" insertion mode.
+                self.process_token_using_rules_of(InsertionMode::InHead);
+            }
+            Token::EndTag { name, .. } if name == "body" || name == "html" || name == "br" => {
+                // SPEC: Act as described in the "anything else" entry below.
+            }
+            Token::StartTag { name, .. } if name == "head" => {
+                todo!()
+            }
+            Token::EndTag { .. } => {
+                // SPEC: Parse error. Ignore the token.
+            }
+            _ => {
+                // SPEC: Insert an HTML element for a "body" start tag token with no attributes.
+                self.insert_html_element_for_token(&Token::StartTag {
+                    name: "body".to_string(),
+                    self_closing: false,
+                    attributes: Vec::new(),
+                });
+
+                // SPEC: Switch the insertion mode to "in body".
+                self.switch_insertion_mode_to(InsertionMode::InBody);
+
+                // SPEC: Reprocess the current token.
+                self.reprocess_token();
+            }
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-incdata
     fn handle_text_insertion_mode(&mut self, token: &Token) {
         match token {
             Token::Character { data } => {
