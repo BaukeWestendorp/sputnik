@@ -39,6 +39,7 @@ pub struct Parser {
     reprocess_current_token: bool,
     document: Rc<Node>,
     open_elements: Vec<Rc<Node>>,
+    head_element_pointer: Option<Rc<Node>>,
     foster_parenting: bool,
 }
 
@@ -57,6 +58,7 @@ impl Parser {
             reprocess_current_token: false,
             document: Rc::new(Node::new(NodeType::Document {})),
             open_elements: Vec::new(),
+            head_element_pointer: None,
             foster_parenting: false,
         }
     }
@@ -100,6 +102,36 @@ impl Parser {
         }
     }
 
+    fn insert_html_element_for_token(&mut self, token: &Token) -> Rc<Node> {
+        // SPEC: 1. Let the adjusted insertion location be the appropriate place for inserting a node.
+        let adjusted_insert_location = self.appropriate_place_for_inserting_node().unwrap();
+
+        // SPEC: 2. Let element be the result of creating an element for the token in the given namespace,
+        //          with the intended parent being the element in which the adjusted insertion location finds itself.
+        let parent = adjusted_insert_location.parent_element.clone();
+        let element = self.create_element_for_token(token, None, parent).unwrap();
+        let element = Rc::new(element);
+
+        // SPEC: 3. If it is possible to insert element at the adjusted insertion location, then:
+        // SPEC: 3.1. If the parser was not created as part of the HTML fragment parsing algorithm,
+        //            then push a new element queue onto element's relevant agent's custom element reactions stack.
+        // FIXME: Implement
+
+        // SPEC: 3.2. Insert element at the adjusted insertion location.
+        // FIXME: Implement
+
+        // SPEC: 3.3. If the parser was not created as part of the HTML fragment parsing algorithm,
+        //            then pop the element queue from element's relevant agent's custom element reactions stack,
+        //            and invoke custom element reactions in that queue.
+        // FIXME: Implement
+
+        // SPEC: 4. Push element onto the stack of open elements so that it is the new current node.
+        self.put_element_in_stack_of_open_elements(element.clone());
+
+        // SPEC: 5. Return element.
+        element
+    }
+
     fn look_up_custom_element_definition(
         &self,
         _document: Rc<Node>,
@@ -138,9 +170,11 @@ impl Parser {
         _synchronous_custom_element: bool,
     ) -> Option<Node> {
         // SPEC: 3. Let result be null.
+        #[allow(unused)]
         let mut result = None;
 
         // SPEC: 4. Let definition be the result of looking up a custom element definition given document, namespace, localName, and is.
+        #[allow(unused)]
         let definition =
             self.look_up_custom_element_definition(document.clone(), namespace, local_name, is);
 
@@ -190,7 +224,12 @@ impl Parser {
         result
     }
 
-    fn create_element_for_token(&self, token: &Token) -> Option<Node> {
+    fn create_element_for_token(
+        &self,
+        token: &Token,
+        namespace: Option<&String>,
+        _parent: Option<Rc<Node>>,
+    ) -> Option<Node> {
         // SPEC: 1. If the active speculative HTML parser is not null,
         //          then return the result of creating a speculative mock element given given namespace,
         //          the tag name of the given token,
@@ -225,7 +264,8 @@ impl Parser {
 
         // SPEC: 6. Let definition be the result of looking up a custom element definition
         //          given document, given namespace, local name, and is.
-        // FIXME: Implement
+        let _definition =
+            self.look_up_custom_element_definition(document.clone(), namespace, local_name, is);
 
         // SPEC: 7. If definition is non-null and the parser was not created as part of the HTML fragment parsing algorithm,
         //          then let will execute script be true.
@@ -404,7 +444,14 @@ impl Parser {
                         // SPEC: Create an element for the token FIXME{in the HTML namespace},
                         //       with the Document as the intended parent.
                         let token = token.clone();
-                        let element = Rc::new(self.create_element_for_token(&token).unwrap()); // FIXME: We shouldn't unwrap here. Propogating errors sounds like a good idea here. (or not as the parser might stop?)
+                        let element = Rc::new(
+                            self.create_element_for_token(
+                                &token,
+                                None,
+                                Some(self.document.clone()),
+                            )
+                            .unwrap(),
+                        ); // FIXME: We shouldn't unwrap here. Propogating errors sounds like a good idea here. (or not as the parser might stop?)
 
                         // SPEC: Append it to the Document object.
                         self.document.append_child(element.clone());
@@ -426,7 +473,39 @@ impl Parser {
                         todo!();
                     }
                 },
-                InsertionMode::BeforeHead => todo!(),
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-before-head-insertion-mode
+                InsertionMode::BeforeHead => match token {
+                    Token::Character { data } if is_parser_whitespace(*data) => {
+                        // SPEC: Ignore the token.
+                    }
+                    Token::Comment { .. } => todo!(),
+                    Token::Doctype { .. } => todo!(),
+                    Token::StartTag { name, .. } if name == "html" => todo!(),
+                    Token::StartTag { name, .. } if name == "head" => {
+                        let token = token.clone();
+                        self.insert_html_element_for_token(&token);
+                    }
+                    Token::EndTag { name, .. }
+                        if name == "head" || name == "body" || name == "br" =>
+                    {
+                        todo!()
+                    }
+                    Token::EndTag { .. } => todo!(),
+                    _ => {
+                        // SPEC: Insert an HTML element for a "head" start tag token with no attributes.
+                        let element = self.insert_html_element_for_token(&Token::StartTag {
+                            name: String::from("head"),
+                            self_closing: false,
+                            attributes: Vec::new(),
+                        });
+                        // SPEC: Set the head element pointer to the newly created head element.
+                        self.head_element_pointer = Some(element);
+                        // SPEC: Switch the insertion mode to "in head".
+                        self.switch_insertion_mode(InsertionMode::InHead);
+                        // SPEC: Reprocess the current token.
+                        self.reprocess_token();
+                    }
+                },
                 InsertionMode::InHead => todo!(),
                 InsertionMode::InHeadNoscript => todo!(),
                 InsertionMode::AfterHead => todo!(),
