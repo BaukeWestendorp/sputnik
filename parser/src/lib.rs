@@ -119,7 +119,7 @@ impl Parser {
                 //          and whose node document is the same as that of the element in which the adjusted insertion location finds itself,
                 //          and insert the newly created node at the adjusted insertion location.
                 let mut text_node = Node::new(NodeType::Text(Text::new(data.to_string().as_str())));
-                text_node.owner_document = adjusted_insertion_location.owner_document.clone();
+                text_node.document = adjusted_insertion_location.document.clone();
                 adjusted_insertion_location.append_child(Rc::new(text_node));
             }
         }
@@ -262,7 +262,7 @@ impl Parser {
             None,
             String::new(),
         )));
-        node.owner_document = Some(document);
+        node.document = Some(document);
 
         let result = Some(node);
 
