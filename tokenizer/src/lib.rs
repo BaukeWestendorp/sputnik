@@ -844,18 +844,58 @@ impl Tokenizer {
                 State::BogusComment => todo!(),
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state
                 State::MarkupDeclarationOpen => {
-                    // FIXME: Fix spec comments
-                    // FIXME: Implement --
+                    // SPEC: Two U+002D HYPHEN-MINUS characters (-)
+                    if self.next_characters_are_ascii_case_insensitive("--") {
+                        // SPEC: Consume those two characters,
+                        self.consume_characters("--");
+
+                        // SPEC: create a comment token whose data is the empty string,
+                        self.set_current_token(Token::Comment {
+                            data: String::new(),
+                        });
+
+                        // SPEC: and switch to the comment start state.
+                        self.switch_to(State::CommentStart);
+                        continue;
+                    }
+
+                    // SPEC: ASCII case-insensitive match for the word "DOCTYPE"
                     if self.next_characters_are_ascii_case_insensitive("DOCTYPE") {
                         self.consume_characters("DOCTYPE");
                         self.switch_to(State::Doctype);
                         continue;
                     }
-                    // FIXME: Implement [CDATA[
-                    // FIXME: Anything else
+
+                    // SPEC: The string "[CDATA[" (the five uppercase letters "CDATA" with a U+005B LEFT SQUARE BRACKET character before and after)
+                    // FIXME: Implement
+
+                    // SPEC: Anything else
+                    // FIXME: Implement
                     todo!()
                 }
-                State::CommentStart => todo!(),
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#comment-start-state
+                State::CommentStart => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        on!('-') => {
+                            // SPEC: Switch to the comment start dash state.
+                            self.switch_to(State::CommentStartDash);
+                        }
+                        on!('>') => {
+                            // SPEC: This is an abrupt-closing-of-empty-comment parse error.
+
+                            // SPEC: Switch to the data state.
+                            self.switch_to(State::Data);
+
+                            // SPEC: Emit the current comment token.
+                            self.emit_current_token();
+                        }
+                        on_anything_else!() | None => {
+                            // SPEC: Reconsume in the comment state.
+                            self.reconsume_in(State::Comment);
+                        }
+                    }
+                }
                 State::CommentStartDash => todo!(),
                 State::Comment => todo!(),
                 State::CommentLessThanSign => todo!(),
