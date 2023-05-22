@@ -270,6 +270,7 @@ pub enum Token {
     StartTag {
         name: String,
         self_closing: bool,
+        self_closing_acknowledged: bool,
         attributes: Vec<Attribute>,
     },
     EndTag {
@@ -284,6 +285,20 @@ pub enum Token {
         data: char,
     },
     EndOfFile,
+}
+
+impl Token {
+    pub fn acknowledge_self_closing_flag(&mut self) {
+        if let Token::StartTag {
+            self_closing_acknowledged,
+            ..
+        } = self
+        {
+            *self_closing_acknowledged = true;
+        } else {
+            panic!("Tried to acknowledge non-StarTag token!");
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -510,6 +525,7 @@ impl Tokenizer {
                                 // SPEC: Set its tag name to the empty string.
                                 name: String::new(),
                                 self_closing: false,
+                                self_closing_acknowledged: false,
                                 attributes: Vec::new(),
                             });
                             // SPEC: Reconsume in the tag name state.

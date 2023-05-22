@@ -1,3 +1,4 @@
+use std::borrow::BorrowMut;
 use std::rc::Rc;
 
 use dom::custom_element_definition::CustomElementDefinition;
@@ -35,6 +36,7 @@ enum InsertionMode {
     AfterAfterFrameset,
 }
 
+#[allow(unused)]
 enum GenericParsingAlgorithm {
     RawText,
     RCData,
@@ -49,12 +51,17 @@ pub struct Parser {
     insertion_mode: InsertionMode,
     original_insertion_mode: InsertionMode,
     referenced_insertion_mode: Option<InsertionMode>,
+
     tokenizer: Tokenizer,
     reprocess_current_token: bool,
+
     document: Rc<Node>,
+
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#stack-of-open-elements
     open_elements: Vec<Rc<Node>>,
-    head_element_pointer: Option<Rc<Node>>,
+
+    head_element: Option<Rc<Node>>,
+
     foster_parenting: bool,
     scripting_flag: bool,
     frameset_ok: FramesetState,
@@ -77,7 +84,7 @@ impl Parser {
             reprocess_current_token: false,
             document: Rc::new(Node::new(NodeType::Document {})),
             open_elements: Vec::new(),
-            head_element_pointer: None,
+            head_element: None,
             foster_parenting: false,
             scripting_flag: false,
             frameset_ok: FramesetState::Ok,
@@ -137,7 +144,7 @@ impl Parser {
 
             // SPEC: 4. If there is a Text node immediately before the adjusted insertion location,
             //          then append data to that Text node's data.
-            if let Some(last_child) = adjusted_insertion_location.last_child.clone() {
+            if let Some(last_child) = adjusted_insertion_location.last_child().clone() {
                 if let NodeType::Text(mut text) = last_child.node_type.clone() {
                     text.data.push(data)
                 }
@@ -146,9 +153,17 @@ impl Parser {
                 //          whose data is data
                 //          and whose node document is the same as that of the element in which the adjusted insertion location finds itself,
                 //          and insert the newly created node at the adjusted insertion location.
-                let mut text_node = Node::new(NodeType::Text(Text::new(data.to_string().as_str())));
-                text_node.document = adjusted_insertion_location.document.clone();
-                adjusted_insertion_location.append_child(Rc::new(text_node));
+                let text_node = Rc::new(Node::new(NodeType::Text(Text::new(
+                    data.to_string().as_str(),
+                ))));
+
+                if let Some(mut document) = text_node.document().clone() {
+                    if let Some(ail_document) = adjusted_insertion_location.document().clone() {
+                        *document.borrow_mut() = ail_document;
+                    }
+                }
+
+                adjusted_insertion_location.append_child(text_node);
             }
         }
     }
@@ -163,10 +178,10 @@ impl Parser {
         };
         // SPEC: 3. Create a Comment node whose data attribute is set to data
         //          and whose node document is the same as that of the node in which the adjusted insertion location finds itself.
-        let node = Node::new(NodeType::Comment(Comment::new(data)));
+        let node = Rc::new(Node::new(NodeType::Comment(Comment::new(data))));
         // SPEC: 4. Insert the newly created node at the adjusted insertion location.
         if let Some(adjusted_insertion_location) = adjusted_insertion_location {
-            adjusted_insertion_location.append_child(Rc::new(node));
+            adjusted_insertion_location.append_child(node);
         }
     }
 
@@ -181,8 +196,8 @@ impl Parser {
 
         // SPEC: 2. Let element be the result of creating an element for the token in the given namespace,
         //          with the intended parent being the element in which the adjusted insertion location finds itself.
-        let parent = adjusted_insert_location.parent_element.clone();
-        let element = self.create_element_for_token(token, None, parent).unwrap();
+        let parent = adjusted_insert_location.parent_element();
+        let element = self.create_element_for_token(token, None, parent.clone());
         let element = Rc::new(element);
 
         // SPEC: 3. If it is possible to insert element at the adjusted insertion location, then:
@@ -254,14 +269,17 @@ impl Parser {
             custom_element_definition: None,
             is: is.map(str::to_string),
         };
-        let mut node = Node::new(NodeType::Element(Element::new(
+        let node = Node::new(NodeType::Element(Element::new(
             associated_values,
             local_name.to_string(),
             None,
             None,
             String::new(),
         )));
-        node.document = Some(document);
+
+        if let Some(doc) = node.clone().document().clone() {
+            *doc.clone().borrow_mut() = document
+        }
 
         let result = Some(node);
 
@@ -280,7 +298,7 @@ impl Parser {
         token: &Token,
         namespace: Option<&str>,
         _parent: Option<Rc<Node>>,
-    ) -> Option<Node> {
+    ) -> Node {
         // SPEC: 1. If the active speculative HTML parser is not null,
         //          then return the result of creating a speculative mock element given given namespace,
         //          the tag name of the given token,
@@ -339,11 +357,9 @@ impl Parser {
         //          If will execute script is true,
         //          set the synchronous custom elements flag;
         //          otherwise, leave it unset.
-        let mut element_node =
-            match self.create_element(document, &local_name, None, None, is, false) {
-                Some(element) => element,
-                None => return None,
-            };
+        let mut element_node = self
+            .create_element(document, &local_name, None, None, is, false)
+            .unwrap();
 
         // SPEC: 10. Append each attribute in the given token to element.
         if let NodeType::Element(element) = &mut element_node.node_type {
@@ -385,7 +401,7 @@ impl Parser {
         // FIXME: Implement
 
         // SPEC: 15. Return element.
-        Some(element_node)
+        element_node
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/custom-elements.html#look-up-a-custom-element-definition
@@ -521,13 +537,13 @@ impl Parser {
                 //       with its name set to the name given in the DOCTYPE token, or the empty string if the name was missing;
                 //       its public ID set to the public identifier given in the DOCTYPE token, or the empty string if the public identifier was missing;
                 //       and its system ID set to the system identifier given in the DOCTYPE token, or the empty string if the system identifier was missing.
-                let doctype_node = Node::new(NodeType::DocumentType(DocumentType::new(
+                let doctype_node = Rc::new(Node::new(NodeType::DocumentType(DocumentType::new(
                     // FIXME: These clones are quite ugly. Are they needed?
                     name.clone().unwrap_or(String::new()),
                     public_identifier.clone().unwrap_or(String::new()),
                     system_identifier.clone().unwrap_or(String::new()),
-                )));
-                self.document.append_child(Rc::new(doctype_node));
+                ))));
+                self.document.append_child(doctype_node);
 
                 // SPEC: Then, if the document is not an iframe srcdoc document,
                 //       and the parser cannot change the mode flag is false,
@@ -578,16 +594,16 @@ impl Parser {
                 // SPEC: Create an element for the token FIXME{in the HTML namespace},
                 //       with the Document as the intended parent.
                 let token = token.clone();
-                let element = Rc::new(
-                    self.create_element_for_token(&token, None, Some(self.document.clone()))
-                        .unwrap(),
-                ); // FIXME: We shouldn't unwrap here. Propogating errors sounds like a good idea here. (or not as the parser might stop?)
+                let element =
+                    self.create_element_for_token(&token, None, Some(self.document.clone()));
+                let element = Rc::new(element);
 
                 // SPEC: Append it to the Document object.
                 self.document.append_child(element.clone());
 
                 // SPEC: Put this element in the stack of open elements.
                 self.push_element_to_stack_of_open_elements(element);
+
                 // SPEC: Switch the insertion mode to "before head".
                 self.switch_insertion_mode_to(InsertionMode::BeforeHead);
             }
@@ -600,7 +616,20 @@ impl Parser {
                 todo!();
             }
             _ => {
-                todo!();
+                // SPEC: Create an html element whose node document is the Document object.
+                if let Some(element) =
+                    self.create_element(self.document.clone(), "html", None, None, None, false)
+                {
+                    // SPEC: Append it to the Document object.
+                    self.document.append_child(Rc::new(element.clone()));
+
+                    // SPEC: Put this element in the stack of open elements.
+                    self.push_element_to_stack_of_open_elements(Rc::new(element));
+                }
+
+                // SPEC: Switch the insertion mode to "before head", then reprocess the token.
+                self.switch_insertion_mode_to(InsertionMode::BeforeHead);
+                self.reprocess_token();
             }
         }
     }
@@ -621,18 +650,23 @@ impl Parser {
             Token::EndTag { name, .. } if name == "head" || name == "body" || name == "br" => {
                 todo!()
             }
-            Token::EndTag { .. } => todo!(),
+            Token::EndTag { .. } => {
+                // SPEC: Parse error. Ignore the token.
+            }
             _ => {
                 // SPEC: Insert an HTML element for a "head" start tag token with no attributes.
                 let element = self.insert_html_element_for_token(&Token::StartTag {
                     name: String::from("head"),
                     self_closing: false,
+                    self_closing_acknowledged: false,
                     attributes: Vec::new(),
                 });
                 // SPEC: Set the head element pointer to the newly created head element.
-                self.head_element_pointer = Some(element);
+                self.head_element = Some(element);
+
                 // SPEC: Switch the insertion mode to "in head".
                 self.switch_insertion_mode_to(InsertionMode::InHead);
+
                 // SPEC: Reprocess the current token.
                 self.reprocess_token();
             }
@@ -759,7 +793,7 @@ impl Parser {
                 // SPEC: Parse error.
 
                 // SPEC: Push the node pointed to by the head element pointer onto the stack of open elements.
-                if let Some(head_element_pointer) = self.head_element_pointer.clone() {
+                if let Some(head_element_pointer) = self.head_element.clone() {
                     self.push_element_to_stack_of_open_elements(head_element_pointer);
                 }
 
@@ -768,7 +802,7 @@ impl Parser {
 
                 // SPEC: Remove the node pointed to by the head element pointer from the stack of open elements.
                 //       (It might not be the current node at this point.)
-                if let Some(head_element_pointer) = self.head_element_pointer.clone() {
+                if let Some(head_element_pointer) = self.head_element.clone() {
                     self.remove_element_from_stack_of_open_elements(head_element_pointer);
                 }
             }
@@ -790,6 +824,7 @@ impl Parser {
                 self.insert_html_element_for_token(&Token::StartTag {
                     name: "body".to_string(),
                     self_closing: false,
+                    self_closing_acknowledged: false,
                     attributes: Vec::new(),
                 });
 
@@ -832,6 +867,68 @@ impl Parser {
         }
     }
 
+    fn parse_token_in_foreign_content(&mut self, token: &mut Token) {
+        // SPEC: When the user agent is to apply the rules for parsing tokens in foreign content, the user agent must handle the token as follows:
+        match token {
+            Token::Character { data } if data == &'\u{0000}' => {
+                // SPEC: Parse error. Insert a U+FFFD REPLACEMENT CHARACTER character.
+            }
+            Token::Character { data } if is_parser_whitespace(*data) => {
+                // SPEC: Insert the token's character.
+                self.insert_character(*data);
+            }
+            Token::Character { data } => {
+                // SPEC: Insert the token's character.
+                self.insert_character(*data);
+
+                // Set the frameset-ok flag to "not ok".
+                self.frameset_ok = FramesetState::NotOk;
+            }
+            Token::Comment { data } => {
+                // SPEC: Insert a comment.
+                self.insert_comment(data, None);
+            }
+            Token::Doctype { .. } => {
+                // SPEC: Parse error. Ignore the token.
+            }
+            // FIXME: Implement SPEC: A start tag whose tag name is one of: "b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl", "dt", "em", "embed", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr", "i", "img", "li", "listing", "menu", "meta", "nobr", "ol", "p", "pre", "ruby", "s", "small", "span", "strong", "strike", "sub", "sup", "table", "tt", "u", "ul", "var"
+            //                        A start tag whose tag name is "font", if the token has any attributes named "color", "face", or "size"
+            //                        An end tag whose tag name is "br", "p"
+            Token::StartTag { self_closing, .. } => {
+                // FIXME Implement SPEC: If the adjusted current node is an element in the MathML namespace, adjust MathML attributes for the token. (This fixes the case of MathML attributes that are not all lowercase.)
+                // FIXME Implement SPEC: If the adjusted current node is an element in the SVG namespace, and the token's tag name is one of the ones in the first column of the following table, change the tag name to the name given in the corresponding cell in the second column. (This fixes the case of SVG elements that are not all lowercase.)
+                // FIXME Implement SPEC: If the adjusted current node is an element in the SVG namespace, adjust SVG attributes for the token. (This fixes the case of SVG attributes that are not all lowercase.)
+                // FIXME Implement SPEC: Adjust foreign attributes for the token. (This fixes the use of namespaced attributes, in particular XLink in SVG.)
+
+                // SPEC: If the token has its self-closing flag set, then run the appropriate steps from the following list:
+                if *self_closing {
+                    // FIXME Implement SPEC: If the token's tag name is "script", and the new current node is in the SVG namespace
+                    // SPEC: Acknowledge the token's self-closing flag, and then act as described in the steps for a "script" end tag below.
+                    todo!()
+                } else {
+                    // SPEC: Otherwise
+                    //       Pop the current node off the stack of open elements and acknowledge the token's self-closing flag.
+                    token.acknowledge_self_closing_flag();
+                    self.pop_current_element_off_stack_of_open_elements();
+                }
+
+                // NOTE: This has been reordered
+                // SPEC: Insert a foreign element for the token, in the same namespace as the adjusted current node.
+                self.insert_foreign_element_for_token(token, None);
+            }
+            // FIXME: Implement SPEC: An end tag whose tag name is "script", if the current node is an SVG script element
+            _ => {
+                // FIXME Implement SPEC: 1. Initialize node to be the current node (the bottommost node of the stack).
+                // FIXME Implement SPEC: 2. If node's tag name, converted to ASCII lowercase, is not the same as the tag name of the token, then this is a parse error.
+                // FIXME Implement SPEC: 3. Loop: If node is the topmost element in the stack of open elements, then return. (fragment case)
+                // FIXME Implement SPEC: 4. If node's tag name, converted to ASCII lowercase, is the same as the tag name of the token, pop elements from the stack of open elements until node has been popped from the stack, and then return.
+                // FIXME Implement SPEC: 5. Set node to the previous entry in the stack of open elements.
+                // FIXME Implement SPEC: 6. If node is not an element in the HTML namespace, return to the step labeled loop.
+                // FIXME Implement SPEC: 7. Otherwise, process the token according to the rules given in the section corresponding to the current insertion mode in HTML content.
+            }
+        }
+    }
+
     pub fn parse(&mut self) -> Node {
         while let Some(token) = match self.reprocess_current_token {
             true => self.tokenizer.current_token(),
@@ -839,11 +936,35 @@ impl Parser {
         } {
             eprintln!("[{:?}] {:?}", self.insertion_mode, token);
 
-            let token = token.clone();
-            self.process_token(&token);
+            let mut token = token.clone();
+
+            // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#tree-construction-dispatcher
+            // As each token is emitted from the tokenizer,
+            // the user agent must follow the appropriate steps from the following list,
+            // known as the tree construction dispatcher:
+
+            // SPEC: If the stack of open elements is empty
+            // FIXME If the adjusted current node is an element in the HTML namespace
+            // FIXME If the adjusted current node is a MathML text integration point and the token is a start tag whose tag name is neither "mglyph" nor "malignmark"
+            // FIXME If the adjusted current node is a MathML text integration point and the token is a character token
+            // FIXME If the adjusted current node is a MathML annotation-xml element and the token is a start tag whose tag name is "svg"
+            // FIXME If the adjusted current node is an HTML integration point and the token is a start tag
+            // FIXME If the adjusted current node is an HTML integration point and the token is a character token
+            //       If the token is an end-of-file token
+            if self.open_elements.is_empty()
+                || match token {
+                    Token::EndOfFile => true,
+                    _ => false,
+                }
+            {
+                self.process_token(&token);
+            } else {
+                self.parse_token_in_foreign_content(&mut token)
+            }
 
             self.reprocess_current_token = false;
         }
-        self.document.clone().as_ref().to_owned()
+
+        self.document.as_ref().to_owned()
     }
 }
