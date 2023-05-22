@@ -16,7 +16,7 @@ pub struct Node<'arena> {
     next_sibling: Link<'arena>,
     first_child: Link<'arena>,
     last_child: Link<'arena>,
-    data: NodeData,
+    pub data: NodeData,
 }
 
 impl<'arena> Node<'arena> {

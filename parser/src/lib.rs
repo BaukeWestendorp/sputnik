@@ -1,8 +1,9 @@
+use std::cell::RefCell;
+
+use dom::arena::{Arena, Ref};
+use dom::node::{Node, NodeData};
 use dom::QualifiedName;
 use tokenizer::{Token, Tokenizer};
-use tree_builder::TreeBuilder;
-
-pub mod tree_builder;
 
 #[allow(unused)]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
@@ -45,16 +46,18 @@ enum FramesetState {
     NotOk,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Debug, Clone)]
-pub struct Parser<T: TreeBuilder> {
-    tree_builder: T,
+#[derive(Clone)]
+pub struct Parser<'arena> {
+    arena: Arena<'arena>,
+    document: Ref<'arena>,
+
     insertion_mode: InsertionMode,
     original_insertion_mode: InsertionMode,
     referenced_insertion_mode: Option<InsertionMode>,
     tokenizer: Tokenizer,
     reprocess_current_token: bool,
-    open_elements: Vec<T::Handle>,
-    // foster_parenting: bool,
+    open_elements: Vec<Ref<'arena>>,
+    foster_parenting: bool,
     // scripting_flag: bool,
     frameset_ok: FramesetState,
 }
@@ -66,23 +69,32 @@ const fn is_parser_whitespace(string: char) -> bool {
     false
 }
 
-impl<T: TreeBuilder> Parser<T> {
-    pub fn new(tree_builder: T, input: &str) -> Self {
+impl<'arena> Parser<'arena> {
+    pub fn new(arena: Arena<'arena>, input: &str) -> Self {
         Self {
-            tree_builder,
+            arena: &arena,
+            document: arena.alloc(Node::new(None, NodeData::Document)),
             insertion_mode: InsertionMode::Initial,
             original_insertion_mode: InsertionMode::Initial,
             referenced_insertion_mode: None,
             tokenizer: Tokenizer::new(input),
             reprocess_current_token: false,
             open_elements: Vec::new(),
-            // foster_parenting: false,
+            foster_parenting: false,
             // scripting_flag: false,
             frameset_ok: FramesetState::Ok,
         }
     }
 
-    fn push_element_to_stack_of_open_elements(&mut self, element: T::Handle) {
+    fn new_node(&self, data: NodeData) -> Ref<'arena> {
+        self.arena.alloc(Node::new(Some(self.document), data))
+    }
+
+    fn parser_error(&mut self, code: Option<&str>) {
+        eprintln!("Parser Error: {code:?}");
+    }
+
+    fn push_element_to_stack_of_open_elements(&mut self, element: Ref<'arena>) {
         self.open_elements.push(element);
     }
 
@@ -90,12 +102,8 @@ impl<T: TreeBuilder> Parser<T> {
         self.open_elements.pop();
     }
 
-    fn remove_element_from_stack_of_open_elements(&mut self, element: T::Handle) {
-        if let Some(index) = self
-            .open_elements
-            .iter()
-            .position(|e| self.tree_builder.is_same_as(e, &element))
-        {
+    fn remove_element_from_stack_of_open_elements(&mut self, element: Ref<'arena>) {
+        if let Some(index) = self.open_elements.iter().position(|e| e == &element) {
             self.open_elements.remove(index);
         }
     }
@@ -145,6 +153,91 @@ impl<T: TreeBuilder> Parser<T> {
         self.referenced_insertion_mode = Some(insertion_mode);
     }
 
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#current-node
+    fn current_node(&self) -> Option<Ref<'arena>> {
+        // SPEC: The current node is the bottommost node in this stack of open elements.
+        self.open_elements.last().cloned()
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#appropriate-place-for-inserting-a-node
+    fn appropriate_place_for_inserting_node(
+        &self,
+        override_target: Option<Ref<'arena>>,
+    ) -> Option<Ref<'arena>> {
+        let target = match override_target {
+            // SPEC: 1. If there was an override target specified, then let target be the override target.
+            Some(override_target) => Some(override_target),
+            // SPEC: Otherwise, let target be the current node.
+            None => self.current_node(),
+        };
+
+        // SPEC: 2. Determine the adjusted insertion location using the first matching steps from the following list:
+        if self.foster_parenting {
+            // SPEC: If foster parenting is enabled and target is a table, tbody, tfoot, thead, or tr element
+            todo!()
+        }
+
+        // SPEC: Otherwise, let adjusted insertion location be inside target, after its last child (if any).
+        return target;
+    }
+
+    fn create_element(
+        &mut self,
+        name: QualifiedName,
+        attributes: Vec<dom::Attribute>,
+    ) -> Ref<'arena> {
+        self.new_node(NodeData::Element {
+            name,
+            attributes: RefCell::new(attributes),
+        })
+    }
+
+    fn append(&mut self, parent: Ref<'arena>, child: Ref<'arena>) {
+        parent.append(child);
+    }
+
+    fn append_doctype_to_document(&mut self, name: &str, public_id: &str, system_id: &str) {
+        let node = self.new_node(NodeData::Doctype {
+            name: name.to_string(),
+            public_id: public_id.to_string(),
+            system_id: system_id.to_string(),
+        });
+
+        self.document.append(node);
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/#insert-a-character
+    fn insert_character(&mut self, character: char) {
+        // SPEC: 1. Let data be the characters passed to the algorithm, or,
+        //          if no characters were explicitly specified, the character of the character token being processed.
+        let data = character;
+
+        // SPEC: 2. Let the adjusted insertion location be the appropriate place for inserting a node.
+        if let Some(adjusted_insertion_location) = self.appropriate_place_for_inserting_node(None) {
+            // SPEC: 3. If the adjusted insertion location is in a Document node, then return.
+            if self.document == adjusted_insertion_location {
+                return;
+            }
+
+            // SPEC: 4. If there is a Text node immediately before the adjusted insertion location,
+            //          then append data to that Text node's data.
+            if let Some(parent) = adjusted_insertion_location.parent() {
+                if let NodeData::Text { contents } = &parent.data {
+                    contents.borrow_mut().push(data);
+                }
+            } else {
+                // SPEC: Otherwise, create a new Text node whose data is data and whose node document is
+                //       the same as that of the element in which the adjusted insertion location finds itself,
+                //       and insert the newly created node at the adjusted insertion location.
+            }
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/#insert-a-comment
+    fn insert_comment(&self, data: &str) {
+        todo!()
+    }
+
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
     fn handle_initial_insertion_mode(&mut self, token: &Token) {
         match token {
@@ -153,7 +246,7 @@ impl<T: TreeBuilder> Parser<T> {
             }
             Token::Comment { data } => {
                 // SPEC: Insert a comment as the last child of the Document object.
-                self.tree_builder.insert_comment(&data);
+                self.insert_comment(data);
             }
             Token::Doctype {
                 name,
@@ -170,14 +263,14 @@ impl<T: TreeBuilder> Parser<T> {
                         && system_identifier != &Some("about:legacy-compat".to_string()))
                 {
                     // SPEC: then there is a parse error.
-                    self.tree_builder.parser_error(None)
+                    self.parser_error(None)
                 }
 
                 // SPEC: Append a DocumentType node to the Document node,
                 //       with its name set to the name given in the DOCTYPE token, or the empty string if the name was missing;
                 //       its public ID set to the public identifier given in the DOCTYPE token, or the empty string if the public identifier was missing;
                 //       and its system ID set to the system identifier given in the DOCTYPE token, or the empty string if the system identifier was missing.
-                self.tree_builder.append_doctype_to_document(
+                self.append_doctype_to_document(
                     name.clone().unwrap_or_default().as_str(),
                     public_identifier.clone().unwrap_or_default().as_str(),
                     system_identifier.clone().unwrap_or_default().as_str(),
@@ -222,7 +315,7 @@ impl<T: TreeBuilder> Parser<T> {
         match token {
             Token::Doctype { .. } => {
                 // SPEC: Parse error. Ignore the token.
-                self.tree_builder.parser_error(None);
+                self.parser_error(None);
             }
             Token::Comment { .. } => todo!(),
             Token::Character { data } if is_parser_whitespace(*data) => {
@@ -241,13 +334,11 @@ impl<T: TreeBuilder> Parser<T> {
                     })
                     .collect();
 
-                let element = self
-                    .tree_builder
-                    .create_element(QualifiedName::new(None, name.to_string()), dom_attributes);
+                let element =
+                    self.create_element(QualifiedName::new(None, name.to_string()), dom_attributes);
 
                 // SPEC: Append it to the Document object.
-                let document = self.tree_builder.document();
-                self.tree_builder.append(&document, element.clone());
+                self.append(&self.document, element);
 
                 // SPEC: Put this element in the stack of open elements.
                 self.push_element_to_stack_of_open_elements(element);
@@ -265,13 +356,11 @@ impl<T: TreeBuilder> Parser<T> {
             }
             _ => {
                 // SPEC: Create an html element FIXME{whose node document is the Document object}.
-                let element = self
-                    .tree_builder
-                    .create_element(QualifiedName::new(None, "html".to_string()), Vec::new());
+                let element =
+                    self.create_element(QualifiedName::new(None, "html".to_string()), Vec::new());
 
                 // SPEC: Append it to the Document object.
-                let document = self.tree_builder.document();
-                self.tree_builder.append(&document, element.clone());
+                self.append(&self.document, element);
 
                 // SPEC: Put this element in the stack of open elements.
                 self.push_element_to_stack_of_open_elements(element);
@@ -526,28 +615,28 @@ impl<T: TreeBuilder> Parser<T> {
         match token {
             Token::Character { data } if data == &'\u{0000}' => {
                 // SPEC: Parse error.
-                self.tree_builder.parser_error(None);
+                self.parser_error(None);
                 // SPEC: Insert a U+FFFD REPLACEMENT CHARACTER character.
-                self.tree_builder.insert_character('\u{FFFD}');
+                self.insert_character('\u{FFFD}');
             }
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // SPEC: Insert the token's character.
-                self.tree_builder.insert_character(*data);
+                self.insert_character(*data);
             }
             Token::Character { data } => {
                 // SPEC: Insert the token's character.
-                self.tree_builder.insert_character(*data);
+                self.insert_character(*data);
 
                 // Set the frameset-ok flag to "not ok".
                 self.frameset_ok = FramesetState::NotOk;
             }
             Token::Comment { data } => {
                 // SPEC: Insert a comment.
-                self.tree_builder.insert_comment(data);
+                self.insert_comment(data);
             }
             Token::Doctype { .. } => {
                 // SPEC: Parse error. Ignore the token.
-                self.tree_builder.parser_error(None);
+                self.parser_error(None);
             }
             // FIXME: Implement SPEC: A start tag whose tag name is one of: "b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl", "dt", "em", "embed", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr", "i", "img", "li", "listing", "menu", "meta", "nobr", "ol", "p", "pre", "ruby", "s", "small", "span", "strong", "strike", "sub", "sup", "table", "tt", "u", "ul", "var"
             //                        A start tag whose tag name is "font", if the token has any attributes named "color", "face", or "size"
@@ -588,7 +677,7 @@ impl<T: TreeBuilder> Parser<T> {
         }
     }
 
-    pub fn parse(&mut self) -> T::Handle {
+    pub fn parse(&mut self) -> Ref<'arena> {
         while let Some(token) = match self.reprocess_current_token {
             true => self.tokenizer.current_token(),
             false => self.tokenizer.next_token(),
@@ -624,6 +713,6 @@ impl<T: TreeBuilder> Parser<T> {
             self.reprocess_current_token = false;
         }
 
-        self.tree_builder.document()
+        self.document
     }
 }
