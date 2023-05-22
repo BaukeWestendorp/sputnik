@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
 pub(crate) struct NamedCharacterReference<'a>([u32; 1], &'a str);
 
 impl<'a> NamedCharacterReference<'a> {

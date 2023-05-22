@@ -175,7 +175,7 @@ macro_rules! noncharacter {
 }
 
 #[allow(unused)]
-#[derive(Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
 pub enum State {
     Data,
     RcData,
@@ -259,7 +259,7 @@ pub enum State {
     NumericCharacterReferenceEnd,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
 pub enum Token {
     Doctype {
         name: Option<String>,
@@ -301,13 +301,13 @@ impl Token {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
 pub struct Attribute {
     pub name: String,
     pub value: String,
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Debug, Clone)]
 pub struct Tokenizer {
     input: String,
     state: State,
