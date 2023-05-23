@@ -144,14 +144,14 @@ impl<'arena> Parser<'arena> {
         };
 
         match mode {
-            InsertionMode::Initial => self.handle_initial_insertion_mode(token),
-            InsertionMode::BeforeHtml => self.handle_before_html_insertion_mode(token),
-            InsertionMode::BeforeHead => self.handle_before_head_insertion_mode(token),
-            InsertionMode::InHead => self.handle_in_head_insertion_mode(token),
+            InsertionMode::Initial => self.handle_initial(token),
+            InsertionMode::BeforeHtml => self.handle_before_html(token),
+            InsertionMode::BeforeHead => self.handle_before_head(token),
+            InsertionMode::InHead => self.handle_in_head(token),
             InsertionMode::InHeadNoscript => todo!("InsertionMode::InHeadNoscript"),
-            InsertionMode::AfterHead => self.handle_after_head_insertion_mode(token),
-            InsertionMode::InBody => self.handle_in_body_insertion_mode(token),
-            InsertionMode::Text => self.handle_text_insertion_mode(token),
+            InsertionMode::AfterHead => self.handle_after_head(token),
+            InsertionMode::InBody => self.handle_in_body(token),
+            InsertionMode::Text => self.handle_text(token),
             InsertionMode::InTable => todo!("InsertionMode::InTable"),
             InsertionMode::InTableText => todo!("InsertionMode::InTableText"),
             InsertionMode::InCaption => todo!("InsertionMode::InCaption"),
@@ -162,10 +162,10 @@ impl<'arena> Parser<'arena> {
             InsertionMode::InSelect => todo!("InsertionMode::InSelect"),
             InsertionMode::InSelectInTable => todo!("InsertionMode::InSelectInTable"),
             InsertionMode::InTemplate => todo!("InsertionMode::InTemplate"),
-            InsertionMode::AfterBody => self.handle_after_body_insertion_mode(token),
+            InsertionMode::AfterBody => self.handle_after_body(token),
             InsertionMode::InFrameset => todo!("InsertionMode::InFrameset"),
             InsertionMode::AfterFrameset => todo!("InsertionMode::AfterFrameset"),
-            InsertionMode::AfterAfterBody => self.handle_after_after_body_insertion_mode(token),
+            InsertionMode::AfterAfterBody => self.handle_after_after_body(token),
             InsertionMode::AfterAfterFrameset => todo!("InsertionMode::AfterAfterFrameset"),
         }
     }
@@ -465,7 +465,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
-    fn handle_initial_insertion_mode(&mut self, token: &Token) {
+    fn handle_initial(&mut self, token: &Token) {
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // SPEC: Ignore the token.
@@ -537,7 +537,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-before-html-insertion-mode
-    fn handle_before_html_insertion_mode(&mut self, token: &Token) {
+    fn handle_before_html(&mut self, token: &Token) {
         match token {
             Token::Doctype { .. } => {
                 // SPEC: Parse error. Ignore the token.
@@ -591,7 +591,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-before-head-insertion-mode
-    fn handle_before_head_insertion_mode(&mut self, token: &Token) {
+    fn handle_before_head(&mut self, token: &Token) {
         let mut create_head = || {
             // SPEC: Insert an HTML element for a "head" start tag token with no attributes.
             let element = self.insert_html_element_for_token(&Token::StartTag {
@@ -640,7 +640,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead
-    fn handle_in_head_insertion_mode(&mut self, token: &Token) {
+    fn handle_in_head(&mut self, token: &Token) {
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // SPEC: Insert the character.
@@ -716,7 +716,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-after-head-insertion-mode
-    fn handle_after_head_insertion_mode(&mut self, token: &Token) {
+    fn handle_after_head(&mut self, token: &Token) {
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // SPEC: Insert the character.
@@ -813,7 +813,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody
-    fn handle_in_body_insertion_mode(&mut self, token: &Token) {
+    fn handle_in_body(&mut self, token: &Token) {
         match token {
             Token::Character { data } if data == &'\u{0000}' => {
                 // SPEC: Parse error. Ignore the token.
@@ -898,7 +898,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-incdata
-    fn handle_text_insertion_mode(&mut self, token: &Token) {
+    fn handle_text(&mut self, token: &Token) {
         match token {
             Token::Character { data } => {
                 // SPEC: Insert the token's character.
@@ -930,7 +930,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-afterbody
-    fn handle_after_body_insertion_mode(&mut self, token: &Token) {
+    fn handle_after_body(&mut self, token: &Token) {
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // SPEC: Process the token using the rules for the "in body" insertion mode.
@@ -969,7 +969,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-after-after-body-insertion-mode
-    fn handle_after_after_body_insertion_mode(&mut self, token: &Token) {
+    fn handle_after_after_body(&mut self, token: &Token) {
         let mut process_token = || {
             // SPEC: Process the token using the rules for the "in body" insertion mode.
             self.process_token_using_the_rules_for(InsertionMode::InBody);
