@@ -220,7 +220,7 @@ impl Tokenizer {
         self.token_emitted = true;
     }
 
-    fn set_current_token(&mut self, token: Token) {
+    fn create_new_token(&mut self, token: Token) {
         self.current_building_token = Some(token);
     }
 
@@ -307,7 +307,12 @@ impl Tokenizer {
     }
 
     pub fn current_end_tag_token_is_an_appropriate_end_tag_token(&self) -> bool {
-        if let Some(Token::EndTag { name, .. }) = self.current_token() {
+        assert!(matches!(
+            self.current_building_token,
+            Some(Token::EndTag { .. })
+        ), "Current token is not an EndTag. This is needed when checking for the appropriate EndTag!");
+
+        if let Some(Token::EndTag { name, .. }) = &self.current_building_token {
             return self.last_start_tag_name.clone().is_some_and(|f| f == *name);
         }
         false
@@ -406,7 +411,7 @@ impl Tokenizer {
                         }
                         on_ascii_alpha!() => {
                             // SPEC: Create a new start tag token.
-                            self.set_current_token(Token::StartTag {
+                            self.create_new_token(Token::StartTag {
                                 // SPEC: Set its tag name to the empty string.
                                 name: String::new(),
                                 self_closing: false,
@@ -427,7 +432,7 @@ impl Tokenizer {
                     match self.current_input_character {
                         on_ascii_alpha!() => {
                             // SPEC: Create a new end tag token, set its tag name to the empty string.
-                            self.set_current_token(Token::EndTag {
+                            self.create_new_token(Token::EndTag {
                                 name: String::new(),
                                 self_closing: false,
                                 attributes: Vec::new(),
@@ -504,7 +509,7 @@ impl Tokenizer {
                     match self.current_input_character {
                         on_ascii_alpha!() => {
                             // SPEC: Create a new end tag token, set its tag name to the empty string.
-                            self.set_current_token(Token::EndTag {
+                            self.create_new_token(Token::EndTag {
                                 name: String::new(),
                                 self_closing: false,
                                 attributes: Vec::new(),
@@ -873,7 +878,7 @@ impl Tokenizer {
                         self.consume_characters("--");
 
                         // SPEC: create a comment token whose data is the empty string,
-                        self.set_current_token(Token::Comment {
+                        self.create_new_token(Token::Comment {
                             data: String::new(),
                         });
 
@@ -972,7 +977,7 @@ impl Tokenizer {
                         }
                         on_anything_else!(character) => {
                             // SPEC: Create a new DOCTYPE token.
-                            self.set_current_token(Token::Doctype {
+                            self.create_new_token(Token::Doctype {
                                 // SPEC: Set the token's name to the current input character.
                                 name: Some(String::from(character)),
                                 public_identifier: None,

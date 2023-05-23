@@ -276,6 +276,11 @@ impl<'arena> Parser<'arena> {
         Some(new_text_node)
     }
 
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#reconstruct-the-active-formatting-elements
+    fn reconstruct_active_formatting_elements_if_any(&mut self) {
+        // FIXME: Implement
+    }
+
     // SPECLINK: https://html.spec.whatwg.org/#insert-a-character
     fn insert_character(&mut self, data: char) {
         if let Some(NodeData::Text { contents }) =
@@ -816,12 +821,19 @@ impl<'arena> Parser<'arena> {
             }
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // SPEC: Reconstruct the active formatting elements, if any.
-                // FIXME: Implement
+                self.reconstruct_active_formatting_elements_if_any();
 
                 // SPEC: Insert the token's character.
                 self.insert_character(*data);
             }
-            Token::Character { .. } => todo!(),
+            Token::Character { data } => {
+                // SPEC: Reconstruct the active formatting elements, if any.
+                self.reconstruct_active_formatting_elements_if_any();
+                // SPEC: Insert the token's character.
+                self.insert_character(*data);
+                // SPEC: Set the frameset-ok flag to "not ok".
+                self.frameset_ok = FramesetState::NotOk;
+            }
             Token::Comment { data } => {
                 // SPEC: Insert a comment.
                 self.insert_comment(data)

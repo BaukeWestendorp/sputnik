@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::cell::{Cell, RefCell};
 
 use crate::arena::{Link, Ref};
@@ -80,35 +81,22 @@ impl<'arena> Node<'arena> {
 
     pub fn is_comment(&self) -> bool {
         // FIXME: This could be more efficient
-        if let NodeData::Comment { .. } = self.data {
-            return true;
-        };
-        false
+        matches!(self.data, NodeData::Comment { .. })
     }
 
     pub fn is_doctype(&self) -> bool {
         // FIXME: This could be more efficient
-        if let NodeData::Doctype { .. } = self.data {
-            return true;
-        };
-        false
+        matches!(self.data, NodeData::Doctype { .. })
     }
 
     pub fn is_document(&self) -> bool {
         // FIXME: This could be more efficient
-        if let NodeData::Document = self.data {
-            return true;
-        };
-
-        false
+        matches!(self.data, NodeData::Document)
     }
 
     pub fn is_element(&self) -> bool {
         // FIXME: This could be more efficient
-        if let NodeData::Element { .. } = self.data {
-            return true;
-        };
-        false
+        matches!(self.data, NodeData::Element { .. })
     }
 
     pub fn is_character_data(&self) -> bool {
@@ -119,18 +107,12 @@ impl<'arena> Node<'arena> {
 
     pub fn is_processing_instruction(&self) -> bool {
         // FIXME: This could be more efficient
-        if let NodeData::ProcessingInstruction { .. } = self.data {
-            return true;
-        };
-        false
+        matches!(self.data, NodeData::ProcessingInstruction { .. })
     }
 
     pub fn is_text(&self) -> bool {
         // FIXME: This could be more efficient
-        if let NodeData::Text { .. } = self.data {
-            return true;
-        };
-        false
+        matches!(self.data, NodeData::Text { .. })
     }
 
     pub fn dump(&'arena self) {
@@ -138,13 +120,20 @@ impl<'arena> Node<'arena> {
     }
 
     fn internal_dump(&'arena self, indentation: &str) {
+        let indent = "    ";
+
         let (opening_tag, closing_tag) = self.data.tags();
         if let Some(opening_tag) = opening_tag {
             println!("{indentation}{opening_tag}");
         }
+
+        if let NodeData::Text { contents } = &self.data {
+            println!("{indentation}{indent}{}", contents.borrow());
+        }
+
         for child in self.children().iter() {
             let mut indentation = indentation.to_string();
-            indentation.push_str("    ");
+            indentation.push_str(indent);
             child.internal_dump(&indentation);
         }
         if let Some(closing_tag) = closing_tag {
