@@ -4,27 +4,6 @@ use crate::arena::{Link, Ref};
 use crate::dom_exception::DomException;
 use crate::{Attribute, QualifiedName};
 
-struct NodeIterator<'arena, I>
-where
-    I: Fn(Ref<'arena>) -> Option<Ref<'arena>>,
-{
-    current: Option<Ref<'arena>>,
-    next_node: I,
-}
-
-impl<'arena, I> Iterator for NodeIterator<'arena, I>
-where
-    I: Fn(Ref<'arena>) -> Option<Ref<'arena>>,
-{
-    type Item = Ref<'arena>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let current = self.current.take();
-        self.current = current.as_ref().and_then(|c| (self.next_node)(c));
-        current
-    }
-}
-
 /// A HTML Node.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Node<'arena> {
@@ -37,8 +16,6 @@ pub struct Node<'arena> {
     last_child: Link<'arena>,
     pub data: NodeData,
 }
-
-// FIXME: next_sibling is never set, so the children() iterator can't get the next child()
 
 impl<'arena> Node<'arena> {
     pub fn new(document: Option<Ref<'arena>>, data: NodeData) -> Node<'arena> {
@@ -80,13 +57,6 @@ impl<'arena> Node<'arena> {
     pub fn last_child(&self) -> Option<Ref<'arena>> {
         self.last_child.get()
     }
-
-    // pub fn children(&'arena self) -> impl Iterator<Item = Ref<'arena>> {
-    //     NodeIterator {
-    //         current: self.first_child(),
-    //         next_node: |node| node.next_sibling(),
-    //     }
-    // }
 
     pub fn children(&'arena self) -> std::cell::Ref<Vec<Ref<'arena>>> {
         self.children.borrow()
@@ -287,7 +257,7 @@ impl<'arena> Node<'arena> {
                 // FIXME: Implement DocumentFragment
                 NodeData::Element { .. } => {
                     // SPEC: parent has an element child,
-                    self.children().iter().find(|child| child.is_element()).is_some() ||
+                    self.children().iter().any(|child| child.is_element()) ||
                         // SPEC: child is a doctype,
                         child.is_some_and(|c|c.is_doctype()) ||
                         // SPEC: or child is non-null and a doctype is following child.
@@ -295,11 +265,11 @@ impl<'arena> Node<'arena> {
                 }
                 NodeData::Doctype { .. } => {
                     // SPEC: parent has a doctype child,
-                    self.children().iter().find(|child| child.is_doctype()).is_some() ||
+                    self.children().iter().any(|child| child.is_doctype()) ||
                         // SPEC: child is non-null and an element is preceding child,
                         child.is_some_and(|c|c.previous_sibling().is_some_and(|c|c.is_element())) ||
                         // SPEC: or child is null and parent has an element child.
-                        child.is_none() && self.children().iter().find(|child| child.is_element()).is_some()
+                        child.is_none() && self.children().iter().any(|child| child.is_element())
                 }
                 _ => false,
             }
@@ -482,7 +452,7 @@ impl NodeData {
         match self {
             NodeData::Document => (Some("#document".to_string()), std_close),
             NodeData::Doctype { .. } => (None, None),
-            NodeData::Text { .. } => (Some(format!("#text")), std_close),
+            NodeData::Text { .. } => (Some("#text".to_string()), std_close),
             NodeData::Comment { .. } => (None, None),
             NodeData::Element { name, .. } => (
                 Some(format!("<{}>", name.local)),

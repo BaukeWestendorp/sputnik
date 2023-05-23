@@ -82,7 +82,7 @@ pub struct Parser<'arena> {
 impl<'arena> Parser<'arena> {
     pub fn new(arena: Arena<'arena>, input: &str) -> Self {
         Self {
-            arena: &arena,
+            arena,
             document: arena.alloc(Node::new(None, NodeData::Document)),
             insertion_mode: InsertionMode::Initial,
             original_insertion_mode: InsertionMode::Initial,
@@ -116,15 +116,12 @@ impl<'arena> Parser<'arena> {
     }
 
     fn stack_of_open_elements_contains_one_of(&self, names: &[&str]) -> bool {
-        self.open_elements
-            .iter()
-            .find(|element| {
-                if let NodeData::Element { name, .. } = &element.data {
-                    return names.contains(&name.local.as_str());
-                }
-                false
-            })
-            .is_some()
+        self.open_elements.iter().any(|element| {
+            if let NodeData::Element { name, .. } = &element.data {
+                return names.contains(&name.local.as_str());
+            }
+            false
+        })
     }
 
     fn switch_insertion_mode_to(&mut self, insertion_mode: InsertionMode) {
@@ -210,6 +207,7 @@ impl<'arena> Parser<'arena> {
         // FIXME: Implement
 
         // SPEC: 4. Return the adjusted insertion location.
+        #[allow(clippy::let_and_return)]
         adjusted_insertion_location
     }
 
@@ -268,7 +266,7 @@ impl<'arena> Parser<'arena> {
             },
         );
 
-        adjusted_insertion_location.0?.append(&new_text_node);
+        adjusted_insertion_location.0?.append(new_text_node);
 
         Some(new_text_node)
     }
@@ -330,7 +328,7 @@ impl<'arena> Parser<'arena> {
         }
 
         // SPEC: 4. Push element onto the stack of open elements so that it is the new current node.
-        self.push_element_to_stack_of_open_elements(&element);
+        self.push_element_to_stack_of_open_elements(element);
 
         // SPEC: 5. Return element.
         element
@@ -399,7 +397,7 @@ impl<'arena> Parser<'arena> {
         //          FIXME{If will execute script is true, set the synchronous custom elements flag; otherwise, leave it unset.}
         // SPEC: 10. Append each attribute in the given token to element.
         let element = self.create_element(
-            &document,
+            document,
             QualifiedName::new(local_name.to_owned()),
             attributes,
         );
@@ -476,8 +474,8 @@ impl<'arena> Parser<'arena> {
                 //       or the token's public identifier is not missing,
                 //       or the token's system identifier is neither missing nor "about:legacy-compat",
                 if name != &Some("html".to_string())
-                    || public_identifier != &None
-                    || (system_identifier != &None
+                    || public_identifier.is_some()
+                    || (system_identifier.is_some()
                         && system_identifier != &Some("about:legacy-compat".to_string()))
                 {
                     // SPEC: then there is a parse error.
@@ -542,7 +540,7 @@ impl<'arena> Parser<'arena> {
             Token::StartTag { name, .. } if name == "html" => {
                 // SPEC: Create an element for the token in the FIXME{HTML namespace},
                 //       with the Document as the intended parent.
-                let element = self.create_element_for_token(token, &self.document);
+                let element = self.create_element_for_token(token, self.document);
 
                 // SPEC: Append it to the Document object.
                 self.document.append(element);
@@ -611,7 +609,7 @@ impl<'arena> Parser<'arena> {
             Token::StartTag { name, .. } if name == "html" => todo!(),
             Token::StartTag { name, .. } if name == "head" => {
                 // SPEC: Insert an HTML element for the token.
-                let element = self.insert_html_element_for_token(&token);
+                let element = self.insert_html_element_for_token(token);
 
                 // SPEC: Set the head element pointer to the newly created head element.
                 self.head_element = Some(element);
@@ -759,7 +757,7 @@ impl<'arena> Parser<'arena> {
                 log_parser_error!();
 
                 // SPEC: Push the node pointed to by the head element pointer onto the stack of open elements.
-                if let Some(head_element_pointer) = self.head_element.clone() {
+                if let Some(head_element_pointer) = self.head_element {
                     self.push_element_to_stack_of_open_elements(head_element_pointer);
                 }
 
@@ -768,7 +766,7 @@ impl<'arena> Parser<'arena> {
 
                 // SPEC: Remove the node pointed to by the head element pointer from the stack of open elements.
                 //       (It might not be the current node at this point.)
-                if let Some(head_element_pointer) = self.head_element.clone() {
+                if let Some(head_element_pointer) = self.head_element {
                     self.remove_element_from_stack_of_open_elements(head_element_pointer);
                 }
             }
@@ -1018,12 +1016,9 @@ impl<'arena> Parser<'arena> {
                 || name == "ul"
                 || name == "var"
                 || (name == "font"
-                    && attributes
-                        .iter()
-                        .find(|attr| {
-                            attr.name == "color" || attr.name == "face" || attr.name == "size"
-                        })
-                        .is_some()) =>
+                    && attributes.iter().any(|attr| {
+                        attr.name == "color" || attr.name == "face" || attr.name == "size"
+                    })) =>
             // FIXME: An end tag whose tag name is "br", "p"
             {
                 // SPEC: Parse error.
@@ -1102,10 +1097,7 @@ impl<'arena> Parser<'arena> {
                     NodeData::Element { name, .. } => name.namespace == Some(Namespace::Html),
                     _ => false,
                 }
-                || match token {
-                    Token::EndOfFile => true,
-                    _ => false,
-                }
+                || matches!(token, Token::EndOfFile)
             {
                 self.process_token(&token);
             } else {
