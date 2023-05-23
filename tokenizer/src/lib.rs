@@ -298,6 +298,10 @@ impl Tokenizer {
         }
     }
 
+    pub fn set_insertion_point(&mut self, insertion_point: Option<usize>) {
+        self.insertion_point = insertion_point
+    }
+
     pub fn current_token(&self) -> Option<&Token> {
         self.tokens.last()
     }

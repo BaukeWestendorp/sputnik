@@ -12,6 +12,11 @@ const fn is_parser_whitespace(string: char) -> bool {
     false
 }
 
+const SPECIAL_TAGS: &[&str] = &[
+    "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc", "tbody", "td", "tfoot",
+    "th", "thead", "tr", "body", "html",
+];
+
 macro_rules! log_parser_error {
     ($message:expr) => {
         eprintln!("Parser Error on {}:{}: {}", file!(), line!(), $message);
@@ -816,6 +821,34 @@ impl<'arena> Parser<'arena> {
                 // SPEC: Insert the token's character.
                 self.insert_character(*data);
             }
+            Token::Character { .. } => todo!(),
+            Token::Comment { data } => {
+                // SPEC: Insert a comment.
+                self.insert_comment(data)
+            }
+            Token::Doctype { .. } => {
+                // SPEC: Parse error. Ignore the token.
+                log_parser_error!();
+            }
+            Token::StartTag { name, .. } if name == "html" => todo!(),
+            // FIXME: A start tag whose tag name is one of: "base", "basefont", "bgsound", "link", "meta", "noframes", "script", "style", "template", "title"
+            //        An end tag whose tag name is "template"
+            Token::StartTag { name, .. } if name == "body" => todo!(),
+            Token::StartTag { name, .. } if name == "frameset" => todo!(),
+            Token::EndOfFile => {
+                // SPEC: If the stack of template insertion modes is not empty, then process the token using the rules for the "in template" insertion mode.
+                // FIXME: Implement
+
+                // Otherwise, follow these steps:
+
+                // If there is a node in the stack of open elements that is not either a dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element, an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element, a thead element, a tr element, the body element, or the html element, then this is a parse error.
+                if !self.stack_of_open_elements_contains_one_of(SPECIAL_TAGS) {
+                    log_parser_error!();
+                };
+
+                // Stop parsing.
+                self.stop_parsing();
+            }
             Token::EndTag { name, .. } if name == "body" => {
                 // SPEC: If the stack of open elements does not have a body element in scope, this is a parse error; ignore the token.
                 if !self.stack_of_open_elements_contains_one_of(&["body"]) {
@@ -827,15 +860,26 @@ impl<'arena> Parser<'arena> {
                 //       dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element,
                 //       an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element,
                 //       a thead element, a tr element, the body element, or the html element, then this is a parse error.
-                if !self.stack_of_open_elements_contains_one_of(&[
-                    "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc", "tbody",
-                    "td", "tfoot", "th", "thead", "tr", "body", "html",
-                ]) {
+                if !self.stack_of_open_elements_contains_one_of(SPECIAL_TAGS) {
                     log_parser_error!();
                 }
 
                 // SPEC: Switch the insertion mode to "after body".
                 self.switch_insertion_mode_to(InsertionMode::AfterBody);
+            }
+            Token::EndTag { name, .. } if name == "html" => {
+                // SPEC: 1. If the stack of open elements does not have a body element in scope,
+                //          this is a parse error; ignore the token.
+                if !self.stack_of_open_elements_contains_one_of(&["body"]) {
+                    log_parser_error!();
+                    return;
+                }
+                // SPEC: 2. Otherwise, if there is a node in the stack of open elements that is not either a dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element, an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element, a thead element, a tr element, the body element, or the html element, then this is a parse error.
+
+                // SPEC: 3. Switch the insertion mode to "after body".
+                self.switch_insertion_mode_to(InsertionMode::AfterBody);
+                // SPEC: 4. Reprocess the token.
+                self.reprocess_token();
             }
             _ => todo!("{token:?}"),
         }
@@ -1067,6 +1111,26 @@ impl<'arena> Parser<'arena> {
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#stop-parsing
     fn stop_parsing(&mut self) {
+        // SPEC: 1. If the active speculative HTML parser is not null, then stop the speculative HTML parser and return.
+        // FIXME: Implement
+        // SPEC: 2. Set the insertion point to undefined.
+        self.tokenizer.set_insertion_point(None);
+        // SPEC: 3. Update the current document readiness to "interactive".
+        // FIXME: Implement
+        // SPEC: 4. Pop all the nodes off the stack of open elements.
+        self.open_elements.clear();
+        // SPEC: 5. While the list of scripts that will execute when the document has finished parsing is not empty:
+        // FIXME: Implement
+        // SPEC: 6. Queue a global task on the DOM manipulation task source given the Document's relevant global object to run the following substeps:
+        // FIXME: Implement
+        // SPEC: 7. Spin the event loop until the set of scripts that will execute as soon as possible and the list of scripts that will execute in order as soon as possible are empty.
+        // FIXME: Implement
+        // SPEC: 8. Spin the event loop until there is nothing that delays the load event in the Document.
+        // FIXME: Implement
+        // SPEC: 9. Queue a global task on the DOM manipulation task source given the Document's relevant global object to run the following steps:
+        // SPEC: 10. If the Document's print when loaded flag is set, then run the printing steps.
+        // FIXME: Implement
+        // SPEC: 11. The Document is now ready for post-load tasks.
         // FIXME: Implement
     }
 
