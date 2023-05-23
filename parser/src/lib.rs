@@ -1151,7 +1151,10 @@ impl<'arena> Parser<'arena> {
             true => self.tokenizer.current_token(),
             false => self.tokenizer.next_token(),
         } {
-            eprintln!("[{:?}] {:?}", self.insertion_mode, token);
+            eprintln!(
+                "\x1b[32m[Parser::InsertionMode::{:?}] {:?}\x1b[0m",
+                self.insertion_mode, token
+            );
 
             let mut token = token.clone();
 

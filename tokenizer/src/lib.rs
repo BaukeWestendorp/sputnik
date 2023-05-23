@@ -326,11 +326,11 @@ impl Tokenizer {
         }
 
         loop {
-            // eprintln!(
-            //     "\x1b[34m[Tokenizer::State::{:?}] {:?}\x1b[0m",
-            //     self.state,
-            //     self.current_token()
-            // );
+            eprintln!(
+                "\x1b[34m[Tokenizer::State::{:?}] {:?}\x1b[0m",
+                self.state,
+                self.current_token()
+            );
 
             if self.token_emitted {
                 break;
