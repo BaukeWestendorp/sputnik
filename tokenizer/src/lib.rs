@@ -314,11 +314,12 @@ pub struct Tokenizer {
     return_state: Option<State>,
     temporary_buffer: String,
     temporary_named_character_references_buffer: Vec<(String, NamedCharacterReference<'static>)>,
+    last_start_tag_name: Option<String>,
     tokens: Vec<Token>,
     insertion_point: Option<usize>,
     current_input_character: Option<char>,
     token_emitted: bool,
-    current_token: Option<Token>,
+    current_building_token: Option<Token>,
     current_attribute: Option<Attribute>,
     character_reference_code: u32,
 }
@@ -331,11 +332,12 @@ impl Tokenizer {
             return_state: None,
             temporary_buffer: String::new(),
             temporary_named_character_references_buffer: Vec::new(),
+            last_start_tag_name: None,
             tokens: Vec::new(),
             insertion_point: None,
             current_input_character: None,
             token_emitted: false,
-            current_token: None,
+            current_building_token: None,
             current_attribute: None,
             character_reference_code: 0,
         }
@@ -378,17 +380,21 @@ impl Tokenizer {
     }
 
     fn emit_token(&mut self, token: Token) {
-        self.tokens.push(token.clone());
+        if let Token::StartTag { name, .. } = &token {
+            self.last_start_tag_name = Some(name.to_owned());
+        }
+
+        self.tokens.push(token);
         self.token_emitted = true;
     }
 
     fn set_current_token(&mut self, token: Token) {
-        self.current_token = Some(token);
+        self.current_building_token = Some(token);
     }
 
     fn push_current_attribute_to_current_tag(&mut self) {
         if let Some(current_attribute) = self.current_attribute.clone() {
-            if let Some(Token::StartTag { attributes, .. }) = &mut self.current_token {
+            if let Some(Token::StartTag { attributes, .. }) = &mut self.current_building_token {
                 attributes.push(current_attribute)
             }
             self.current_attribute = None
@@ -399,10 +405,10 @@ impl Tokenizer {
         // If we have prepared an attribute, add it to the current tag.
         self.push_current_attribute_to_current_tag();
 
-        if let Some(current_token) = self.current_token.clone() {
+        if let Some(current_token) = self.current_building_token.clone() {
             self.emit_token(current_token);
         }
-        self.current_token = None
+        self.current_building_token = None
     }
 
     fn set_current_attribute(&mut self, attribute: Attribute) {
@@ -464,6 +470,13 @@ impl Tokenizer {
         self.tokens.last()
     }
 
+    pub fn current_end_tag_token_is_an_appropriate_end_tag_token(&self) -> bool {
+        if let Some(Token::EndTag { name, .. }) = self.current_token() {
+            return self.last_start_tag_name.clone().is_some_and(|f| f == *name);
+        }
+        false
+    }
+
     pub fn next_token(&mut self) -> Option<&Token> {
         self.token_emitted = false;
 
@@ -472,6 +485,12 @@ impl Tokenizer {
         }
 
         loop {
+            // eprintln!(
+            //     "\x1b[34m[Tokenizer::State::{:?}] {:?}\x1b[0m",
+            //     self.state,
+            //     self.current_token()
+            // );
+
             if self.token_emitted {
                 break;
             }
@@ -502,7 +521,37 @@ impl Tokenizer {
                         }
                     }
                 }
-                State::RcData => todo!(),
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#rcdata-state
+                State::RcData => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        on!('&') => {
+                            // SPEC: Set the return state to the RCDATA state.
+                            self.set_return_state(State::RcData);
+
+                            // SPEC: Switch to the character reference state.
+                            self.switch_to(State::CharacterReference);
+                        }
+                        on!('<') => {
+                            // SPEC: Switch to the RCDATA less-than sign state.
+                            self.switch_to(State::RcDataLessThanSign);
+                        }
+                        on_null!() => {
+                            // SPEC: This is an unexpected-null-character parse error.
+
+                            // SPEC: Emit a U+FFFD REPLACEMENT CHARACTER character token.
+                            self.emit_token(Token::Character { data: '\u{FFFD}' });
+                        }
+                        on_eof!() => {
+                            // SPEC: Emit an end-of-file token.
+                            self.emit_token(Token::EndOfFile);
+                        }
+                        on_anything_else!(character) => {
+                            // SPEC: Emit the current input character as a character token.
+                            self.emit_token(Token::Character { data: character });
+                        }
+                    }
+                }
                 State::RawText => todo!(),
                 State::ScriptData => todo!(),
                 State::PlainText => todo!(),
@@ -582,7 +631,7 @@ impl Tokenizer {
                             //          to the current tag token's tag name.
                             let character = character.to_ascii_lowercase();
                             // SPEC: Append the current input character to the current tag token's tag name.
-                            match &mut self.current_token {
+                            match &mut self.current_building_token {
                                 Some(Token::StartTag { name, .. }) => {
                                     name.push(character.to_ascii_lowercase());
                                 }
@@ -594,9 +643,126 @@ impl Tokenizer {
                         }
                     }
                 }
-                State::RcDataLessThanSign => todo!(),
-                State::RcDataEndTagOpen => todo!(),
-                State::RcDataEndTagName => todo!(),
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#rcdata-less-than-sign-state
+                State::RcDataLessThanSign => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        on!('/') => {
+                            // SPEC: Set the temporary buffer to the empty string.
+                            self.temporary_buffer.clear();
+
+                            // SPEC: Switch to the RCDATA end tag open state.
+                            self.switch_to(State::RcDataEndTagOpen);
+                        }
+                        on_anything_else!() | None => {
+                            // SPEC: Emit a U+003C LESS-THAN SIGN character token.
+                            self.emit_token(Token::Character { data: '<' });
+                            // SPEC: Reconsume in the RCDATA state.
+                            self.reconsume_in(State::RcData);
+                        }
+                    }
+                }
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#rcdata-end-tag-open-state
+                State::RcDataEndTagOpen => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        on_ascii_alpha!() => {
+                            // SPEC: Create a new end tag token, set its tag name to the empty string.
+                            self.set_current_token(Token::EndTag {
+                                name: String::new(),
+                                self_closing: false,
+                                attributes: Vec::new(),
+                            });
+
+                            // SPEC: Reconsume in the RCDATA end tag name state.
+                            self.reconsume_in(State::RcDataEndTagName);
+                        }
+                        on_anything_else!() | None => {
+                            // SPEC: Emit a U+003C LESS-THAN SIGN character token
+                            self.emit_token(Token::Character { data: '<' });
+                            // SPEC: and a U+002F SOLIDUS character token.
+                            self.emit_token(Token::Character { data: '/' });
+                            // SPEC: Reconsume in the RCDATA state.
+                            self.reconsume_in(State::RcData);
+                        }
+                    }
+                }
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#rcdata-end-tag-name-state
+                State::RcDataEndTagName => {
+                    macro_rules! anything_else {
+                        () => {
+                            // SPEC: Emit a U+003C LESS-THAN SIGN character token,
+                            self.emit_token(Token::Character { data: '<' });
+
+                            // SPEC: a U+002F SOLIDUS character token,
+                            self.emit_token(Token::Character { data: '/' });
+
+                            // SPEC: and a character token for each of the characters in the temporary buffer
+                            //       (in the order they were added to the buffer).
+                            for character in self.temporary_buffer.clone().chars() {
+                                self.emit_token(Token::Character { data: character });
+                            }
+
+                            // SPEC: Reconsume in the RCDATA state.
+                            self.reconsume_in(State::RcData);
+                        };
+                    }
+
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        on_whitespace!() => {
+                            // SPEC: If the current end tag token is an appropriate end tag token,
+                            //       then switch to the before attribute name state.
+                            if self.current_end_tag_token_is_an_appropriate_end_tag_token() {
+                                self.switch_to(State::BeforeAttributeName);
+                            } else {
+                                // SPEC: Otherwise, treat it as per the "anything else" entry below.
+                                anything_else!();
+                            }
+                        }
+                        on!('/') => {
+                            // SPEC: If the current end tag token is an appropriate end tag token,
+                            //       then switch to the self-closing start tag state.
+                            if self.current_end_tag_token_is_an_appropriate_end_tag_token() {
+                                self.switch_to(State::SelfClosingStartTag);
+                            } else {
+                                // SPEC: Otherwise, treat it as per the "anything else" entry below.
+                                anything_else!();
+                            }
+                        }
+                        on!('>') => {
+                            // SPEC: If the current end tag token is an appropriate end tag token,
+                            //       then switch to the data state and emit the current tag token.
+                            if self.current_end_tag_token_is_an_appropriate_end_tag_token() {
+                                self.switch_to(State::Data);
+                                self.emit_current_token();
+                            } else {
+                                // SPEC: Otherwise, treat it as per the "anything else" entry below.
+                                anything_else!();
+                            }
+                        }
+                        on_ascii_upper_alpha!() => {
+                            todo!()
+                        }
+                        on_ascii_lower_alpha!(character) => {
+                            // SPEC: Append the current input character to the current tag token's tag name.
+                            if let Some(Token::StartTag { .. }) = &mut self.current_building_token {
+                                todo!()
+                            }
+                            if let Some(Token::EndTag { name, .. }) =
+                                &mut self.current_building_token
+                            {
+                                name.push(character);
+                            }
+
+                            // SPEC: Append the current input character to the temporary buffer.
+                            self.temporary_buffer.push(character);
+                        }
+                        on_anything_else!() | None => {
+                            anything_else!();
+                        }
+                    }
+                }
                 State::RawTextLessThanSign => todo!(),
                 State::RawTextEndTagOpen => todo!(),
                 State::RawTextEndTagName => todo!(),
@@ -663,8 +829,11 @@ impl Tokenizer {
                             let character = character.to_ascii_lowercase();
 
                             if let '"' | '\'' | '<' = character {
-                                // FIXME Implement
-                                // SPEC: This is an unexpected-character-in-attribute-name parse error. Treat it as per the "anything else" entry below.
+                                // SPEC: This is an unexpected-character-in-attribute-name parse error.
+                                // FIXME: Implement
+
+                                // Treat it as per the "anything else" entry below.
+                                // FIXME: Implement
                             }
 
                             // Append the current input character to the current attribute's name.
@@ -800,8 +969,10 @@ impl Tokenizer {
                         on_eof!() => todo!(),
                         on_anything_else!(character) => {
                             if let '"' | '\'' | '<' | '=' | '`' = character {
-                                // FIXME Implement:
-                                // SPEC: This is an unexpected-character-in-unquoted-attribute-value parse error. Treat it as per the "anything else" entry below.
+                                // SPEC: This is an unexpected-character-in-unquoted-attribute-value parse error.
+                                // FIXME: Implement
+
+                                // SPEC: Treat it as per the "anything else" entry below.
                             }
 
                             // SPEC: Append the current input character to the current attribute's value.
@@ -844,7 +1015,7 @@ impl Tokenizer {
                         on!('>') => {
                             // SPEC: Set the self-closing flag of the current tag token.
                             if let Some(Token::StartTag { self_closing, .. }) =
-                                &mut self.current_token
+                                &mut self.current_building_token
                             {
                                 *self_closing = true
                             }
@@ -947,8 +1118,8 @@ impl Tokenizer {
                         on_null!() => todo!(),
                         on!('>') => todo!(),
                         on_eof!() => {
-                            // FIXME: Implement
                             // SPEC: This is an eof-in-doctype parse error.
+                            // FIXME: Implement
 
                             // SPEC: Create a new DOCTYPE token.
                             //       Emit the current token.
@@ -959,6 +1130,7 @@ impl Tokenizer {
                                 // SPEC: Set its force-quirks flag to on.
                                 force_quirks: true,
                             });
+
                             // SPEC: Emit an end-of-file token.
                             self.emit_token(Token::EndOfFile);
                         }
@@ -1004,7 +1176,7 @@ impl Tokenizer {
                             // SPEC: Append the current input character to the current DOCTYPE token's name.
                             if let Some(Token::Doctype {
                                 name: Some(name), ..
-                            }) = &mut self.current_token
+                            }) = &mut self.current_building_token
                             {
                                 name.push(character)
                             }

@@ -1,17 +1,36 @@
 use std::cell::{Cell, RefCell};
 
 use crate::arena::{Link, Ref};
-use crate::mutation_observer::RegisteredObserver;
-use crate::mutation_record::MutationRecord;
+use crate::dom_exception::DomException;
 use crate::{Attribute, QualifiedName};
 
+struct NodeIterator<'arena, I>
+where
+    I: Fn(Ref<'arena>) -> Option<Ref<'arena>>,
+{
+    current: Option<Ref<'arena>>,
+    next_node: I,
+}
+
+impl<'arena, I> Iterator for NodeIterator<'arena, I>
+where
+    I: Fn(Ref<'arena>) -> Option<Ref<'arena>>,
+{
+    type Item = Ref<'arena>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.current.take();
+        self.current = current.as_ref().and_then(|c| (self.next_node)(c));
+        current
+    }
+}
+
 /// A HTML Node.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Node<'arena> {
     document: Link<'arena>,
     parent: Link<'arena>,
     children: RefCell<Vec<Ref<'arena>>>,
-    registered_observer_list: RefCell<Vec<RegisteredObserver>>,
     previous_sibling: Link<'arena>,
     next_sibling: Link<'arena>,
     first_child: Link<'arena>,
@@ -19,13 +38,14 @@ pub struct Node<'arena> {
     pub data: NodeData,
 }
 
+// FIXME: next_sibling is never set, so the children() iterator can't get the next child()
+
 impl<'arena> Node<'arena> {
     pub fn new(document: Option<Ref<'arena>>, data: NodeData) -> Node<'arena> {
         Node {
             document: Cell::new(document),
             parent: Cell::new(None),
             children: RefCell::new(Vec::new()),
-            registered_observer_list: RefCell::new(Vec::new()),
             previous_sibling: Cell::new(None),
             next_sibling: Cell::new(None),
             first_child: Cell::new(None),
@@ -61,12 +81,15 @@ impl<'arena> Node<'arena> {
         self.last_child.get()
     }
 
+    // pub fn children(&'arena self) -> impl Iterator<Item = Ref<'arena>> {
+    //     NodeIterator {
+    //         current: self.first_child(),
+    //         next_node: |node| node.next_sibling(),
+    //     }
+    // }
+
     pub fn children(&'arena self) -> std::cell::Ref<Vec<Ref<'arena>>> {
         self.children.borrow()
-    }
-
-    pub fn registered_observer_list(&'arena self) -> std::cell::Ref<Vec<RegisteredObserver>> {
-        self.registered_observer_list.borrow()
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-tree-inclusive-ancestor
@@ -106,6 +129,7 @@ impl<'arena> Node<'arena> {
         if let NodeData::Document = self.data {
             return true;
         };
+
         false
     }
 
@@ -115,6 +139,12 @@ impl<'arena> Node<'arena> {
             return true;
         };
         false
+    }
+
+    pub fn is_character_data(&self) -> bool {
+        // FIXME: This could be more efficient
+        // FIXME: CharacterData should be implemented
+        self.is_text() || self.is_processing_instruction() || self.is_comment()
     }
 
     pub fn is_processing_instruction(&self) -> bool {
@@ -137,13 +167,19 @@ impl<'arena> Node<'arena> {
         self.internal_dump("");
     }
 
-    fn internal_dump(&'arena self, prefix: &str) {
-        let name = self.data.to_string();
-        println!("{}<{}>", prefix, name);
-        for child in self.children().iter() {
-            child.internal_dump("  ");
+    fn internal_dump(&'arena self, indentation: &str) {
+        let (opening_tag, closing_tag) = self.data.tags();
+        if let Some(opening_tag) = opening_tag {
+            println!("{indentation}{opening_tag}");
         }
-        println!("{}</{}>", prefix, name);
+        for child in self.children().iter() {
+            let mut indentation = indentation.to_string();
+            indentation.push_str("    ");
+            child.internal_dump(&indentation);
+        }
+        if let Some(closing_tag) = closing_tag {
+            println!("{indentation}{closing_tag}");
+        }
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-tree-index
@@ -212,28 +248,70 @@ impl<'arena> Node<'arena> {
         self.pre_insert(child, None);
     }
 
-    // SPECLINK: https://dom.spec.whatwg.org/#concept-node-pre-insert
-    fn pre_insert(&'arena self, node: &'arena Self, before: Option<&'arena Self>) -> &'arena Self {
-        // SPEC: 1. Ensure pre-insertion validity of node into parent before child.
-        // FIXME: Implement
-
-        // SPEC: 2. Let referenceChild be child.
-        let mut reference_child = before;
-
-        // SPEC: 3. If referenceChild is node, then set referenceChild to node’s next sibling.
-        if reference_child == Some(node) {
-            reference_child = node.next_sibling()
+    // SPECLINK: https://dom.spec.whatwg.org/#concept-node-ensure-pre-insertion-validity
+    pub fn ensure_pre_insertion_validity(
+        &'arena self,
+        node: Ref<'arena>,
+        child: Option<Ref<'arena>>,
+    ) -> Result<(), DomException> {
+        // SPEC: 1. If parent is not a Document, DocumentFragment, or Element node, then throw a "HierarchyRequestError" DOMException.
+        if !self.is_document() && !self.is_document_fragment() && !self.is_element() {
+            return Err(DomException::HierarchyRequestError);
         }
 
-        // SPEC: 4. Insert node into parent before referenceChild.
-        self.insert(node, reference_child);
+        // SPEC: 2. If node is a host-including inclusive ancestor of parent, then throw a "HierarchyRequestError" DOMException.
+        // FIXME: Implement
 
-        // SPEC: 5. Return node.
-        node
+        // SPEC: 3. If child is non-null and its parent is not parent, then throw a "NotFoundError" DOMException.
+        if child.is_some_and(|c| c.parent() != Some(self)) {
+            return Err(DomException::NotFoundError);
+        }
+
+        // SPEC: 4. If node is not a DocumentFragment, DocumentType, Element, or CharacterData node, then throw a "HierarchyRequestError" DOMException.
+        if !node.is_document_fragment()
+            && !node.is_doctype()
+            && !node.is_element()
+            && !node.is_character_data()
+        {
+            return Err(DomException::HierarchyRequestError);
+        }
+        // SPEC: 5. If either node is a Text node and parent is a document, or node is a doctype and parent is not a document, then throw a "HierarchyRequestError" DOMException.
+        if (node.is_text() && self.is_document()) || (node.is_doctype() && !self.is_document()) {
+            return Err(DomException::HierarchyRequestError);
+        }
+
+        // SPEC: 6. If parent is a document, and any of the statements below,
+        //          switched on the interface node implements, are true, then throw a "HierarchyRequestError" DOMException.
+        if self.is_document()
+            && match node.data {
+                // FIXME: Implement DocumentFragment
+                NodeData::Element { .. } => {
+                    // SPEC: parent has an element child,
+                    self.children().iter().find(|child| child.is_element()).is_some() ||
+                        // SPEC: child is a doctype,
+                        child.is_some_and(|c|c.is_doctype()) ||
+                        // SPEC: or child is non-null and a doctype is following child.
+                        child.is_some_and(|c|c.next_sibling().is_some_and(|c|c.is_doctype()))
+                }
+                NodeData::Doctype { .. } => {
+                    // SPEC: parent has a doctype child,
+                    self.children().iter().find(|child| child.is_doctype()).is_some() ||
+                        // SPEC: child is non-null and an element is preceding child,
+                        child.is_some_and(|c|c.previous_sibling().is_some_and(|c|c.is_element())) ||
+                        // SPEC: or child is null and parent has an element child.
+                        child.is_none() && self.children().iter().find(|child| child.is_element()).is_some()
+                }
+                _ => false,
+            }
+        {
+            return Err(DomException::HierarchyRequestError);
+        };
+
+        Ok(())
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-node-insert
-    fn insert(&'arena self, node: &'arena Self, before: Option<&'arena Self>) {
+    pub fn insert(&'arena self, node: &'arena Self, child: Option<&'arena Self>) {
         // SPEC: 1. Let nodes be node’s children, if node is a DocumentFragment node; otherwise « node ».
         let mut nodes = Vec::new();
         match node.is_document_fragment() {
@@ -257,13 +335,13 @@ impl<'arena> Node<'arena> {
         // FIXME: Implement
 
         // SPEC: 5. If child is non-null, then:
-        if let Some(_before) = before {
+        if let Some(_child) = child {
             todo!()
         }
 
         // SPEC: 6. Let previousSibling be child’s previous sibling or parent’s last child if child is null.
-        let previous_sibling = match before {
-            Some(before) => before.previous_sibling(),
+        let _previous_sibling = match child {
+            Some(child) => child.previous_sibling(),
             None => self.last_child(),
         };
 
@@ -272,12 +350,22 @@ impl<'arena> Node<'arena> {
             // SPEC: 7.1. Adopt node into parent’s node document.
             self.document().adopt(node);
 
-            if let Some(before) = before {
+            if let Some(_child) = child {
                 // SPEC: 7.3. Otherwise, insert node into parent’s children before child’s index.
-                self.children.borrow_mut().insert(before.index(), node);
+                todo!("Implement inserting child");
             } else {
                 // SPEC: 7.2. If child is null, then append node to parent’s children.
                 self.children.borrow_mut().push(node);
+
+                if self.last_child().is_some() {
+                    self.last_child.set(Some(node));
+                }
+                node.previous_sibling.set(self.last_child());
+                node.parent.set(Some(self));
+                self.last_child.set(Some(node));
+                if self.first_child().is_none() {
+                    self.first_child.set(self.last_child());
+                }
             }
 
             // SPEC: 7.4. If parent is a shadow host whose shadow root’s slot assignment is "named" and node is a slottable, then assign a slot for node.
@@ -294,16 +382,72 @@ impl<'arena> Node<'arena> {
         }
 
         // SPEC: 8. If suppress observers flag is unset, then queue a tree mutation record for parent with nodes, « », previousSibling, and child.
-        MutationRecord::queue_tree_mutation_record(
-            self,
-            nodes,
-            Vec::new(),
-            previous_sibling,
-            before,
-        )
+        // FIXME: Implement
 
         // SPEC: 9. Run the children changed steps for parent.
         // FIXME: Implement
+    }
+
+    // SPECLINK: https://dom.spec.whatwg.org/#concept-node-pre-insert
+    fn pre_insert(&'arena self, node: &'arena Self, child: Option<&'arena Self>) -> &'arena Self {
+        // SPEC: 1. Ensure pre-insertion validity of node into parent before child.
+        // FIXME: Implement
+
+        // SPEC: 2. Let referenceChild be child.
+        let mut reference_child = child;
+
+        // SPEC: 3. If referenceChild is node, then set referenceChild to node’s next sibling.
+        if reference_child == Some(node) {
+            reference_child = node.next_sibling()
+        }
+
+        // SPEC: 4. Insert node into parent before referenceChild.
+        self.insert(node, reference_child);
+
+        // SPEC: 5. Return node.
+        node
+    }
+}
+
+impl<'arena> std::fmt::Debug for Node<'arena> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // destructuring will make it fail to compile
+        // if you later add a field and forget to update here
+        let Node {
+            document,
+            parent,
+            children,
+            previous_sibling,
+            next_sibling,
+            first_child,
+            last_child,
+            data,
+        } = self;
+
+        if self.is_document() {
+            return write!(f, "Document {{ ... }}");
+        }
+
+        // impl Debug for HexArray here
+        f.debug_struct("Node")
+            .field("data", &data)
+            .field("children", &children.borrow())
+            .field(
+                "previous_sibling",
+                &previous_sibling.get().map(|v| v.data.to_string()),
+            )
+            .field(
+                "next_sibling",
+                &next_sibling.get().map(|v| v.data.to_string()),
+            )
+            .field(
+                "first_child",
+                &first_child.get().map(|v| v.data.to_string()),
+            )
+            .field("last_child", &last_child.get().map(|v| v.data.to_string()))
+            .field("parent", &parent.get().map(|v| v.data.to_string()))
+            .field("document", &document.get().map(|v| v.data.to_string()))
+            .finish()
     }
 }
 
@@ -331,6 +475,24 @@ pub enum NodeData {
     },
 }
 
+impl NodeData {
+    pub fn tags(&self) -> (Option<String>, Option<String>) {
+        let std_close = Some("\"".to_string());
+
+        match self {
+            NodeData::Document => (Some("#document".to_string()), std_close),
+            NodeData::Doctype { .. } => (None, None),
+            NodeData::Text { .. } => (Some(format!("#text")), std_close),
+            NodeData::Comment { .. } => (None, None),
+            NodeData::Element { name, .. } => (
+                Some(format!("<{}>", name.local)),
+                Some(format!("</{}>", name.local)),
+            ),
+            NodeData::ProcessingInstruction { .. } => (None, None),
+        }
+    }
+}
+
 impl ToString for NodeData {
     fn to_string(&self) -> String {
         match self {
@@ -339,7 +501,7 @@ impl ToString for NodeData {
             NodeData::Text { .. } => "Text".to_string(),
             NodeData::Comment { .. } => "Comment".to_string(),
             NodeData::Element { name, .. } => {
-                format!("{}", name.local)
+                format!("Element({})", name.local)
             }
             NodeData::ProcessingInstruction { .. } => "ProcessingInstruction".to_string(),
         }
