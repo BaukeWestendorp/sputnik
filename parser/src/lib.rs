@@ -114,6 +114,20 @@ impl<'arena> Parser<'arena> {
         self.open_elements.pop();
     }
 
+    fn pop_elements_from_stack_of_open_elements_until_element_has_been_popped(
+        &mut self,
+        tag_name: &str,
+    ) {
+        let mut current = self.current_node();
+        while let Some(NodeData::Element { name, .. }) = current.map(|c| &c.data) {
+            self.pop_current_element_off_stack_of_open_elements();
+            if name.local == tag_name {
+                return;
+            }
+            current = self.current_node();
+        }
+    }
+
     fn remove_element_from_stack_of_open_elements(&mut self, element: Ref<'arena>) {
         if let Some(index) = self.open_elements.iter().position(|e| e == &element) {
             self.open_elements.remove(index);
@@ -127,6 +141,28 @@ impl<'arena> Parser<'arena> {
             }
             false
         })
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#generate-implied-end-tags
+    fn generate_implied_end_tags_except_for(&mut self, except_for: &str) {
+        // SPEC: while the current node is a dd element, a dt element, an li element, an optgroup element,
+        //       an option element, a p element, an rb element, an rp element, an rt element, or an rtc element,
+        //       the UA must pop the current node off the stack of open elements.
+        let mut current = self.current_node();
+        while let Some(NodeData::Element { name, .. }) = current.map(|c| &c.data) {
+            if name.local.as_str() == except_for {
+                break;
+            }
+            if [
+                "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc",
+            ]
+            .contains(&name.local.as_str())
+            {
+                return;
+            }
+            self.pop_current_element_off_stack_of_open_elements();
+            current = self.current_node();
+        }
     }
 
     fn switch_insertion_mode_to(&mut self, insertion_mode: InsertionMode) {
@@ -279,6 +315,21 @@ impl<'arena> Parser<'arena> {
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#reconstruct-the-active-formatting-elements
     fn reconstruct_active_formatting_elements_if_any(&mut self) {
         // FIXME: Implement
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#close-a-p-element
+    fn close_a_p_element(&mut self) {
+        // SPEC: Generate implied end tags, except for p elements.
+        self.generate_implied_end_tags_except_for("p");
+
+        // SPEC: If the current node is not a p element, then this is a parse error.
+        if let Some(NodeData::Element { name, .. }) = self.current_node().map(|c| &c.data) {
+            if name.local != "p" {
+                log_parser_error!();
+            }
+        }
+        // SPEC: Pop elements from the stack of open elements until a p element has been popped from the stack.
+        self.pop_elements_from_stack_of_open_elements_until_element_has_been_popped("p");
     }
 
     // SPECLINK: https://html.spec.whatwg.org/#insert-a-character
@@ -892,6 +943,56 @@ impl<'arena> Parser<'arena> {
                 self.switch_insertion_mode_to(InsertionMode::AfterBody);
                 // SPEC: 4. Reprocess the token.
                 self.reprocess_token();
+            }
+            Token::StartTag { name, .. }
+                if name == "address"
+                    || name == "article"
+                    || name == "aside"
+                    || name == "blockquote"
+                    || name == "center"
+                    || name == "details"
+                    || name == "dialog"
+                    || name == "dir"
+                    || name == "div"
+                    || name == "dl"
+                    || name == "fieldset"
+                    || name == "figcaption"
+                    || name == "figure"
+                    || name == "footer"
+                    || name == "header"
+                    || name == "hgroup"
+                    || name == "main"
+                    || name == "menu"
+                    || name == "nav"
+                    || name == "ol"
+                    || name == "p"
+                    || name == "search"
+                    || name == "section"
+                    || name == "summary"
+                    || name == "ul" =>
+            {
+                // SPEC: If the stack of open elements has a p element in button scope, then close a p element.
+                if self.stack_of_open_elements_contains_one_of(&["p"]) {
+                    self.close_a_p_element();
+                }
+                // SPEC: Insert an HTML element for the token.
+                self.insert_html_element_for_token(token);
+            }
+            Token::EndTag { name, .. } if name == "p" => {
+                // SPEC: If the stack of open elements does not have a p element in button scope, then this is a parse error;
+                //       insert an HTML element for a "p" start tag token with no attributes.
+                if !self.stack_of_open_elements_contains_one_of(&["p"]) {
+                    log_parser_error!();
+                    self.insert_html_element_for_token(&Token::StartTag {
+                        name: String::from("p"),
+                        self_closing: false,
+                        self_closing_acknowledged: false,
+                        attributes: Vec::new(),
+                    });
+                }
+
+                // SPEC: Close a p element.
+                self.close_a_p_element();
             }
             _ => todo!("{token:?}"),
         }
