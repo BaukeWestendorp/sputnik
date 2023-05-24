@@ -527,6 +527,15 @@ impl<'arena> Parser<'arena> {
         self.insert_foreign_element_for_token(token, None)
     }
 
+    fn insert_html_element_for_start_token_with_tag(&mut self, tag: &str) -> Ref<'arena> {
+        self.insert_html_element_for_token(&Token::StartTag {
+            name: tag.to_string(),
+            self_closing: false,
+            self_closing_acknowledged: false,
+            attributes: vec![],
+        })
+    }
+
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-a-foreign-element
     fn insert_foreign_element_for_token(
         &mut self,
@@ -826,12 +835,7 @@ impl<'arena> Parser<'arena> {
         macro_rules! anything_else {
             () => {
                 // SPEC: Insert an HTML element for a "head" start tag token with no attributes.
-                let element = self.insert_html_element_for_token(&Token::StartTag {
-                    name: String::from("head"),
-                    self_closing: false,
-                    self_closing_acknowledged: false,
-                    attributes: Vec::new(),
-                });
+                let element = self.insert_html_element_for_start_token_with_tag("head");
                 // SPEC: Set the head element pointer to the newly created head element.
                 self.head_element = Some(element);
 
@@ -1044,12 +1048,7 @@ impl<'arena> Parser<'arena> {
             }
             _ => {
                 // SPEC: Insert an HTML element for a "body" start tag token with no attributes.
-                self.insert_html_element_for_token(&Token::StartTag {
-                    name: "body".to_string(),
-                    self_closing: false,
-                    self_closing_acknowledged: false,
-                    attributes: Vec::new(),
-                });
+                self.insert_html_element_for_start_token_with_tag("body");
 
                 // SPEC: Switch the insertion mode to "in body".
                 self.switch_insertion_mode_to(InsertionMode::InBody);
@@ -1258,12 +1257,7 @@ impl<'arena> Parser<'arena> {
                     .has_element_with_tag_name_in_button_scope("p")
                 {
                     log_parser_error!("Found </p> closing tag in invalid scope.");
-                    self.insert_html_element_for_token(&Token::StartTag {
-                        name: String::from("p"),
-                        self_closing: false,
-                        self_closing_acknowledged: false,
-                        attributes: Vec::new(),
-                    });
+                    self.insert_html_element_for_start_token_with_tag("p");
                 }
 
                 // SPEC: Close a p element.
@@ -1606,12 +1600,7 @@ impl<'arena> Parser<'arena> {
                 // SPEC: Clear the stack back to a table context. (See below.)
                 self.clear_the_stack_back_to_a_table_context();
                 // SPEC: Insert an HTML element for a "tbody" start tag token with no attributes,
-                self.insert_html_element_for_token(&Token::StartTag {
-                    name: "tbody".to_string(),
-                    self_closing: false,
-                    self_closing_acknowledged: false,
-                    attributes: Vec::new(),
-                });
+                self.insert_html_element_for_start_token_with_tag("tbody");
                 // SPEC: then switch the insertion mode to "in table body".
                 self.switch_insertion_mode_to(InsertionMode::InTableBody);
                 // SPEC: Reprocess the current token.
@@ -1798,12 +1787,7 @@ impl<'arena> Parser<'arena> {
                 // SPEC: Clear the stack back to a table body context. (See below.)
                 self.clear_the_stack_back_to_a_table_body_context();
                 // SPEC: Insert an HTML element for a "tr" start tag token with no attributes,
-                self.insert_html_element_for_token(&Token::StartTag {
-                    name: "tr".to_string(),
-                    self_closing: false,
-                    self_closing_acknowledged: false,
-                    attributes: vec![],
-                });
+                self.insert_html_element_for_start_token_with_tag("tr");
                 // SPEC: then switch the insertion mode to "in row".
                 self.switch_insertion_mode_to(InsertionMode::InRow);
                 // SPEC: Reprocess the current token.
