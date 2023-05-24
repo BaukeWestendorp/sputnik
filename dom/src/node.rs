@@ -320,12 +320,6 @@ impl<'arena> Node<'arena> {
             println!("{indentation}{opening_tag}");
         }
 
-        if let NodeData::CharacterData { variant, data } = &self.data {
-            if matches!(variant, CharacterDataVariant::Text { .. }) {
-                println!("{indentation}{indent}\"{}\"", data.borrow());
-            }
-        }
-
         for child in self.children().iter() {
             let mut indentation = indentation.to_string();
             indentation.push_str(indent);
@@ -661,15 +655,15 @@ impl NodeData {
         let std_close = Some("\"".to_string());
 
         match self {
-            NodeData::Document => (Some("#document".to_string()), std_close),
-            NodeData::CharacterData { data, variant } => match variant {
-                CharacterDataVariant::Text { .. } => (Some("#text".to_string()), std_close),
+            NodeData::Document => (Some("Document".to_string()), std_close),
+            NodeData::Doctype { name, .. } => (Some(format!("<!DOCTYPE {name}>")), None),
+            NodeData::CharacterData { variant, data } => match variant {
+                CharacterDataVariant::Text { .. } => {
+                    (Some(format!("#text \"{}\"", data.borrow().trim())), None)
+                }
                 _ => (None, None),
             },
-            NodeData::Element { name, .. } => (
-                Some(format!("<{}>", name.local)),
-                Some(format!("</{}>", name.local)),
-            ),
+            NodeData::Element { name, .. } => (Some(format!("<{}>", name.local)), std_close),
             _ => (None, None),
         }
     }
