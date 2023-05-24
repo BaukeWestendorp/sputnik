@@ -1055,21 +1055,6 @@ impl<'arena> Parser<'arena> {
                 self.switch_insertion_mode_to(InsertionMode::InBody);
 
                 // SPEC: Reprocess the current token.
-                // SPEC: Insert an HTML element for a "head" start tag token with no attributes.
-                let element = self.insert_html_element_for_token(&Token::StartTag {
-                    name: String::from("head"),
-                    self_closing: false,
-                    self_closing_acknowledged: false,
-                    attributes: Vec::new(),
-                });
-                // SPEC: Set the head element pointer to the newly created head element.
-                self.head_element = Some(element);
-
-                // SPEC: Switch the insertion mode to "in head".
-                self.switch_insertion_mode_to(InsertionMode::InHead);
-
-                // SPEC: Reprocess the current token.
-                self.process_token_using_the_rules_for(self.insertion_mode, token);
             }
         }
     }
@@ -1272,7 +1257,7 @@ impl<'arena> Parser<'arena> {
                     .stack_of_open_elements
                     .has_element_with_tag_name_in_button_scope("p")
                 {
-                    log_parser_error!();
+                    log_parser_error!("Found </p> closing tag in invalid scope.");
                     self.insert_html_element_for_token(&Token::StartTag {
                         name: String::from("p"),
                         self_closing: false,
