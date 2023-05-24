@@ -19,11 +19,6 @@ const fn is_parser_whitespace(string: char) -> bool {
     false
 }
 
-const SPECIAL_TAGS: &[&str] = &[
-    "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc", "tbody", "td", "tfoot",
-    "th", "thead", "tr", "body", "html",
-];
-
 macro_rules! log_parser_error {
     ($message:expr) => {
         eprintln!(
@@ -179,99 +174,80 @@ impl<'a> Parser<'a> {
                 last = true;
             }
 
-            // FIXME: Convert this to a match statement.
-
-            // SPEC: 4. If node is a select element, run these substeps:
-            if node.is_element_with_tag("select") {
-                // SPEC: 4.1 If last is true, jump to the step below labeled done.
-                if !last {
-                    // SPEC: 4.2 Let ancestor be node.
-                    let mut ancestor = node;
-                    // SPEC: 4.3 Loop: If ancestor is the first node in the stack of open elements, jump to the step below labeled done.
-                    while !Node::are_same_optional(
-                        Some(ancestor),
-                        self.stack_of_open_elements.first(),
-                    ) {
-                        // SPEC: 4.4 Let ancestor be the node before ancestor in the stack of open elements.
-                        ancestor = self
-                            .stack_of_open_elements
-                            .element_immediately_above(ancestor)
-                            .expect("element should exist, because, otherwise we would have broken out of this loop");
-                        // SPEC: 4.5 If ancestor is a template node, jump to the step below labeled done.
-                        if ancestor.is_element_with_tag("template") {
-                            break;
+            if let NodeData::Element { name, .. } = &node.data {
+                match name.local.as_str() {
+                    "select" => {
+                        // SPEC: 4.1 If last is true, jump to the step below labeled done.
+                        if !last {
+                            // SPEC: 4.2 Let ancestor be node.
+                            let mut ancestor = node;
+                            // SPEC: 4.3 Loop: If ancestor is the first node in the stack of open elements, jump to the step below labeled done.
+                            while !Node::are_same_optional(
+                                Some(ancestor),
+                                self.stack_of_open_elements.first(),
+                            ) {
+                                // SPEC: 4.4 Let ancestor be the node before ancestor in the stack of open elements.
+                                ancestor = self
+                                    .stack_of_open_elements
+                                    .element_immediately_above(ancestor)
+                                    .expect("element should exist, because, otherwise we would have broken out of this loop");
+                                // SPEC: 4.5 If ancestor is a template node, jump to the step below labeled done.
+                                if ancestor.is_element_with_tag("template") {
+                                    break;
+                                }
+                                // SPEC: 4.6 If ancestor is a table node, switch the insertion mode to "in select in table" and return.
+                                if ancestor.is_element_with_tag("table") {
+                                    self.switch_insertion_mode_to(InsertionMode::InSelectInTable);
+                                }
+                                // SPEC: 4.7 Jump back to the step labeled loop.
+                            }
                         }
-                        // SPEC: 4.6 If ancestor is a table node, switch the insertion mode to "in select in table" and return.
-                        if ancestor.is_element_with_tag("table") {
-                            self.switch_insertion_mode_to(InsertionMode::InSelectInTable);
-                            return;
-                        }
-                        // SPEC: 4.7 Jump back to the step labeled loop.
+                        // SPEC: 4.8 Done: Switch the insertion mode to "in select" and return.
+                        self.switch_insertion_mode_to(InsertionMode::InSelect);
                     }
+                    "td" | "tr" if !last => {
+                        self.switch_insertion_mode_to(InsertionMode::InCell);
+                    }
+                    "tr" => {
+                        self.switch_insertion_mode_to(InsertionMode::InRow);
+                    }
+                    "tbody" | "thead" | "tfoot" => {
+                        self.switch_insertion_mode_to(InsertionMode::InTableBody);
+                    }
+                    "caption" => {
+                        self.switch_insertion_mode_to(InsertionMode::InCaption);
+                    }
+                    "colgroup" => {
+                        self.switch_insertion_mode_to(InsertionMode::InColumnGroup);
+                    }
+                    "table" => {
+                        self.switch_insertion_mode_to(InsertionMode::InTable);
+                    }
+                    "template" => {
+                        todo!();
+                    }
+                    "head" if !last => {
+                        self.switch_insertion_mode_to(InsertionMode::InHead);
+                    }
+                    "body" => {
+                        self.switch_insertion_mode_to(InsertionMode::InBody);
+                    }
+                    "frameset" => {
+                        self.switch_insertion_mode_to(InsertionMode::InFrameset);
+                    }
+                    "html" => {
+                        // SPEC: 15.1 If the head element pointer is null,
+                        if self.head_element.is_none() {
+                            // SPEC: switch the insertion mode to "before head" and return. (fragment case)
+                            self.switch_insertion_mode_to(InsertionMode::BeforeHead);
+                        }
+                        // SPEC: 15.2 Otherwise, the head element pointer is not null, switch the insertion mode to "after head" and return.
+                        self.switch_insertion_mode_to(InsertionMode::AfterHead);
+                    }
+                    _ => panic!("Unhandled tag"),
                 }
-                // SPEC: 4.8 Done: Switch the insertion mode to "in select" and return.
-                self.switch_insertion_mode_to(InsertionMode::InSelect);
             }
-            // SPEC: 5. If node is a td or th element and last is false, then switch the insertion mode to "in cell" and return.
-            if node.is_element_with_one_of_tags(&["td", "tr"]) && !last {
-                self.switch_insertion_mode_to(InsertionMode::InCell);
-                return;
-            }
-            // SPEC: 6. If node is a tr element, then switch the insertion mode to "in row" and return.
-            if node.is_element_with_tag("tr") {
-                self.switch_insertion_mode_to(InsertionMode::InRow);
-                return;
-            }
-            // SPEC: 7. If node is a tbody, thead, or tfoot element, then switch the insertion mode to "in table body" and return.
-            if node.is_element_with_one_of_tags(&["tbody", "thead", "tfoot"]) {
-                self.switch_insertion_mode_to(InsertionMode::InTableBody);
-                return;
-            }
-            // SPEC: 8. If node is a caption element, then switch the insertion mode to "in caption" and return.
-            if node.is_element_with_tag("caption") {
-                self.switch_insertion_mode_to(InsertionMode::InCaption);
-                return;
-            }
-            // SPEC: 9. If node is a colgroup element, then switch the insertion mode to "in column group" and return.
-            if node.is_element_with_tag("colgroup") {
-                self.switch_insertion_mode_to(InsertionMode::InColumnGroup);
-                return;
-            }
-            // SPEC: 10. If node is a table element, then switch the insertion mode to "in table" and return.
-            if node.is_element_with_tag("table") {
-                self.switch_insertion_mode_to(InsertionMode::InTable);
-                return;
-            }
-            // SPEC: 11. If node is a template element, then switch the insertion mode to the current template insertion mode and return.
-            if node.is_element_with_tag("template") {
-                todo!();
-            }
-            // SPEC: 12. If node is a head element and last is false, then switch the insertion mode to "in head" and return.
-            if node.is_element_with_tag("head") && !last {
-                self.switch_insertion_mode_to(InsertionMode::InHead);
-                return;
-            }
-            // SPEC: 13. If node is a body element, then switch the insertion mode to "in body" and return.
-            if node.is_element_with_tag("body") {
-                self.switch_insertion_mode_to(InsertionMode::InBody);
-                return;
-            }
-            // SPEC: 14. If node is a frameset element, then switch the insertion mode to "in frameset" and return. (fragment case)
-            if node.is_element_with_tag("frameset") {
-                self.switch_insertion_mode_to(InsertionMode::InFrameset);
-                return;
-            }
-            // SPEC: 15. If node is an html element, run these substeps:
-            if node.is_element_with_tag("html") {
-                // SPEC: 15.1 If the head element pointer is null,
-                if self.head_element.is_none() {
-                    // SPEC: switch the insertion mode to "before head" and return. (fragment case)
-                    self.switch_insertion_mode_to(InsertionMode::BeforeHead);
-                    return;
-                }
-                // SPEC: 15.2 Otherwise, the head element pointer is not null, switch the insertion mode to "after head" and return.
-                self.switch_insertion_mode_to(InsertionMode::AfterHead);
-            }
+
             // SPEC: 16. If last is true, then switch the insertion mode to "in body" and return. (fragment case)
             if last {
                 self.switch_insertion_mode_to(InsertionMode::InBody);
@@ -290,43 +266,6 @@ impl<'a> Parser<'a> {
 
     fn reprocess_token(&mut self, token: &mut Token) {
         self.process_token_using_the_rules_for(self.insertion_mode, token);
-    }
-
-    fn process_token_using_the_rules_for(
-        &mut self,
-        insertion_mode: InsertionMode,
-        token: &mut Token,
-    ) {
-        eprintln!(
-            "\x1b[32m[Parser::InsertionMode::{:?}] {:?}\x1b[0m",
-            insertion_mode, token
-        );
-
-        match insertion_mode {
-            InsertionMode::Initial => self.handle_initial(token),
-            InsertionMode::BeforeHtml => self.handle_before_html(token),
-            InsertionMode::BeforeHead => self.handle_before_head(token),
-            InsertionMode::InHead => self.handle_in_head(token),
-            InsertionMode::InHeadNoscript => todo!("InsertionMode::InHeadNoscript"),
-            InsertionMode::AfterHead => self.handle_after_head(token),
-            InsertionMode::InBody => self.handle_in_body(token),
-            InsertionMode::Text => self.handle_text(token),
-            InsertionMode::InTable => self.handle_in_table(token),
-            InsertionMode::InTableText => self.handle_in_table_text(token),
-            InsertionMode::InCaption => todo!("InsertionMode::InCaption"),
-            InsertionMode::InColumnGroup => todo!("InsertionMode::InColumnGroup"),
-            InsertionMode::InTableBody => self.handle_in_table_body(token),
-            InsertionMode::InRow => self.handle_in_row(token),
-            InsertionMode::InCell => todo!("InsertionMode::InCell"),
-            InsertionMode::InSelect => todo!("InsertionMode::InSelect"),
-            InsertionMode::InSelectInTable => todo!("InsertionMode::InSelectInTable"),
-            InsertionMode::InTemplate => todo!("InsertionMode::InTemplate"),
-            InsertionMode::AfterBody => self.handle_after_body(token),
-            InsertionMode::InFrameset => todo!("InsertionMode::InFrameset"),
-            InsertionMode::AfterFrameset => todo!("InsertionMode::AfterFrameset"),
-            InsertionMode::AfterAfterBody => self.handle_after_after_body(token),
-            InsertionMode::AfterAfterFrameset => todo!("InsertionMode::AfterAfterFrameset"),
-        }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#current-node
@@ -373,10 +312,12 @@ impl<'a> Parser<'a> {
             let last_table = &self.stack_of_open_elements.last_with_tag("table");
 
             // SPEC: 2.3 If there is a last template and
-            //           either there is no last table, or there is one, but last template is lower (more recently added) than last table in the stack of open elements,
+            //           either there is no last table, or there is one, but last template is lower
+            //           (more recently added) than last table in the stack of open elements,
             if let Some(last_template) = last_template {
                 if last_table.is_none() || last_template.0 > last_table.unwrap().0 {
-                    // SPEC: then: let adjusted insertion location be inside last template's template contents, after its last child (if any), and abort these steps.
+                    // SPEC: then: let adjusted insertion location be inside last template's template
+                    //       contents, after its last child (if any), and abort these steps.
                     return AdjustedInsertionLocation {
                         parent: last_template.1,
                         child: InsertionLocation::AfterLastChildIfAny,
@@ -387,7 +328,8 @@ impl<'a> Parser<'a> {
             match last_table {
                 None => {
                     // SPEC: 2.4 If there is no last table,
-                    //           then let adjusted insertion location be inside the first element in the stack of open elements (the html element),
+                    //           then let adjusted insertion location be inside the first element
+                    //           in the stack of open elements (the html element),
                     //           after its last child (if any),
                     //           and abort these steps. (fragment case)
                     AdjustedInsertionLocation {
@@ -396,7 +338,9 @@ impl<'a> Parser<'a> {
                     }
                 }
                 Some(last_table) => {
-                    // SPEC: 2.5 If last table has a parent node, then let adjusted insertion location be inside last table's parent node, immediately before last table, and abort these steps.
+                    // SPEC: 2.5 If last table has a parent node, then let adjusted insertion
+                    //       location be inside last table's parent node,
+                    //       immediately before last table, and abort these steps.
                     if let Some(parent) = last_table.1.parent() {
                         return AdjustedInsertionLocation {
                             parent,
@@ -404,13 +348,15 @@ impl<'a> Parser<'a> {
                         };
                     }
 
-                    // SPEC: 2.6 Let previous element be the element immediately above last table in the stack of open elements.
+                    // SPEC: 2.6 Let previous element be the element immediately
+                    //           above last table in the stack of open elements.
                     let previous_element = self
                         .stack_of_open_elements
                         .element_immediately_above(last_table.1)
                         .expect("There will always be an html element on the stack");
 
-                    // SPEC: 2.7 Let adjusted insertion location be inside previous element, after its last child (if any).
+                    // SPEC: 2.7 Let adjusted insertion location be inside previous element,
+                    //           after its last child (if any).
                     AdjustedInsertionLocation {
                         parent: previous_element,
                         child: InsertionLocation::AfterLastChildIfAny,
@@ -418,7 +364,8 @@ impl<'a> Parser<'a> {
                 }
             }
         } else {
-            // SPEC: -> Otherwise, let adjusted insertion location be inside target, after its last child (if any).
+            // SPEC: -> Otherwise, let adjusted insertion location be inside target,
+            //          after its last child (if any).
             AdjustedInsertionLocation {
                 parent: target,
                 child: InsertionLocation::AfterLastChildIfAny,
@@ -426,7 +373,8 @@ impl<'a> Parser<'a> {
         };
 
         // SPEC: If the adjusted insertion location is inside a template element,
-        //       let it instead be inside the template element's template contents, after its last child (if any).
+        //       let it instead be inside the template element's template contents,
+        //       after its last child (if any).
         // FIXME: Implement
     }
 
@@ -621,7 +569,8 @@ impl<'a> Parser<'a> {
                 //          given document, given namespace, local name, and is.
                 // FIXME: Implement
 
-                // SPEC: 7. If definition is non-null and the parser was not created as part of the HTML fragment parsing algorithm,
+                // SPEC: 7. If definition is non-null and the parser was not
+                //          created as part of the HTML fragment parsing algorithm,
                 //          then let will execute script be true.
                 //          Otherwise, let it be false.
                 // FIXME: Implement
@@ -672,7 +621,8 @@ impl<'a> Parser<'a> {
         //           there is no template element on the stack of open elements,
         //           element is either not listed or doesn't have a form attribute,
         //           and the intended parent is in the same tree as the element pointed to by the form element pointer,
-        //           then associate element with the form element pointed to by the form element pointer and set element's parser inserted flag.
+        //           then associate element with the form element pointed
+        //           to by the form element pointer and set element's parser inserted flag.
         // FIXME: Implement
 
         // SPEC: 15. Return element.
@@ -734,9 +684,12 @@ impl<'a> Parser<'a> {
                 }
 
                 // SPEC: Append a DocumentType node to the Document node,
-                //       with its name set to the name given in the DOCTYPE token, or the empty string if the name was missing;
-                //       its public ID set to the public identifier given in the DOCTYPE token, or the empty string if the public identifier was missing;
-                //       and its system ID set to the system identifier given in the DOCTYPE token, or the empty string if the system identifier was missing.
+                //       with its name set to the name given in the DOCTYPE token,
+                //       or the empty string if the name was missing;
+                //       its public ID set to the public identifier given in the DOCTYPE token,
+                //       or the empty string if the public identifier was missing;
+                //       and its system ID set to the system identifier given in
+                //       the DOCTYPE token, or the empty string if the system identifier was missing.
                 self.append_doctype_to_document(
                     name.clone().unwrap_or_default().as_str(),
                     public_identifier.clone().unwrap_or_default().as_str(),
@@ -1061,6 +1014,11 @@ impl<'a> Parser<'a> {
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody
     fn handle_in_body(&mut self, token: &mut Token) {
+        const INVALID_EOF_TAGS: &[&str] = &[
+            "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc", "tbody", "td",
+            "tfoot", "th", "thead", "tr", "body", "html",
+        ];
+
         match token {
             Token::Character { data } if data == &'\u{0000}' => {
                 // SPEC: Parse error. Ignore the token.
@@ -1108,15 +1066,19 @@ impl<'a> Parser<'a> {
             Token::StartTag { name, .. } if name == "body" => todo!(),
             Token::StartTag { name, .. } if name == "frameset" => todo!(),
             Token::EndOfFile => {
-                // SPEC: If the stack of template insertion modes is not empty, then process the token using the rules for the "in template" insertion mode.
+                // SPEC: If the stack of template insertion modes is not empty,
+                //       then process the token using the rules for the "in template" insertion mode.
                 // FIXME: Implement
 
-                // Otherwise, follow these steps:
+                // SPEC: Otherwise, follow these steps:
 
-                // If there is a node in the stack of open elements that is not either a dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element, an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element, a thead element, a tr element, the body element, or the html element, then this is a parse error.
+                // SPEC: If there is a node in the stack of open elements that is not either a dd element, a dt element,
+                //       an li element, an optgroup element, an option element, a p element, an rb element, an rp element,
+                //       an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element,
+                //       a thead element, a tr element, the body element, or the html element, then this is a parse error.
                 if !self
                     .stack_of_open_elements
-                    .contains_one_of_tags(SPECIAL_TAGS)
+                    .contains_one_of_tags(INVALID_EOF_TAGS)
                 {
                     log_parser_error!();
                 };
@@ -1125,11 +1087,12 @@ impl<'a> Parser<'a> {
                 self.stop_parsing();
             }
             Token::EndTag { name, .. } if name == "body" => {
-                // SPEC: If the stack of open elements does not have a body element in scope, this is a parse error; ignore the token.
+                // SPEC: If the stack of open elements does not have a body element in scope,
                 if !self
                     .stack_of_open_elements
                     .has_element_with_tag_name_in_scope("body")
                 {
+                    // SPEC this is a parse error; ignore the token.
                     log_parser_error!();
                     return;
                 }
@@ -1140,7 +1103,7 @@ impl<'a> Parser<'a> {
                 //       a thead element, a tr element, the body element, or the html element, then this is a parse error.
                 if !self
                     .stack_of_open_elements
-                    .contains_one_of_tags(SPECIAL_TAGS)
+                    .contains_one_of_tags(INVALID_EOF_TAGS)
                 {
                     log_parser_error!();
                 }
@@ -1158,7 +1121,11 @@ impl<'a> Parser<'a> {
                     log_parser_error!();
                     return;
                 }
-                // SPEC: 2. Otherwise, if there is a node in the stack of open elements that is not either a dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element, an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element, a thead element, a tr element, the body element, or the html element, then this is a parse error.
+                // SPEC: 2. Otherwise, if there is a node in the stack of open elements that is not either a
+                //          dd element, a dt element, an li element, an optgroup element, an option element,
+                //          a p element, an rb element, an rp element, an rt element, an rtc element, a tbody element,
+                //          a td element, a tfoot element, a th element, a thead element, a tr element,
+                //          the body element, or the html element, then this is a parse error.
 
                 // SPEC: 3. Switch the insertion mode to "after body".
                 self.switch_insertion_mode_to(InsertionMode::AfterBody);
@@ -1285,11 +1252,14 @@ impl<'a> Parser<'a> {
                 use list_of_active_formatting_elements::Position;
 
                 // SPEC: If the list of active formatting elements contains an a element between
-                //       the end of the list and the last marker on the list (or the start of the list if there is no marker on the list),
+                //       the end of the list and the last marker on the list
+                //        (or the start of the list if there is no marker on the list),
                 //       then this is a parse error;
                 //       run the adoption agency algorithm for the token,
-                //       then remove that element from the list of active formatting elements and the stack of open elements
-                //       if the adoption agency algorithm didn't already remove it (it might not have if the element is not in table scope).
+                //       then remove that element from the list of active formatting
+                //        elements and the stack of open elements
+                //       if the adoption agency algorithm didn't already remove it
+                //        (it might not have if the element is not in table scope).
                 if self
                     .list_of_active_formatting_elements
                     .contains_element_between(Position::End, Position::LastMarkerOrElseStart, "a")
@@ -1350,7 +1320,8 @@ impl<'a> Parser<'a> {
                 todo!()
             }
             Token::StartTag { name, .. } if name == "table" => {
-                // SPEC: If the Document is not set to quirks mode, and the stack of open elements has a p element in button scope, then close a p element.
+                // SPEC: If the Document is not set to quirks mode, and the stack of open elements
+                //       has a p element in button scope, then close a p element.
                 // FIXME: Implement
                 // SPEC: Insert an HTML element for the token.
                 self.insert_html_element_for_token(token);
@@ -1523,12 +1494,20 @@ impl<'a> Parser<'a> {
             }
 
             todo!()
-            // SPEC: 4.5 If formatting element is in the stack of open elements, but the element is not in scope, then this is a parse error; return.
+            // SPEC: 4.5 If formatting element is in the stack of open elements, but the element is not in scope,
+            //           then this is a parse error; return.
             // SPEC: 4.6 If formatting element is not the current node, this is a parse error. (But do not return.)
-            // SPEC: 4.7 Let furthest block be the topmost node in the stack of open elements that is lower in the stack than formatting element, and is an element in the special category. There might not be one.
-            // SPEC: 4.8 If there is no furthest block, then the UA must first pop all the nodes from the bottom of the stack of open elements, from the current node up to and including formatting element, then remove formatting element from the list of active formatting elements, and finally return.
-            // SPEC: 4.9 Let common ancestor be the element immediately above formatting element in the stack of open elements.
-            // SPEC: 4.10 Let a bookmark note the position of formatting element in the list of active formatting elements relative to the elements on either side of it in the list.
+            // SPEC: 4.7 Let furthest block be the topmost node in the stack of open elements that is
+            //           lower in the stack than formatting element, and is an element in the special category.
+            //           There might not be one.
+            // SPEC: 4.8 If there is no furthest block, then the UA must first pop all the nodes from
+            //           the bottom of the stack of open elements, from the current node up to and including
+            //           formatting element, then remove formatting element from the list of active
+            //           formatting elements, and finally return.
+            // SPEC: 4.9 Let common ancestor be the element immediately above formatting element in
+            //           the stack of open elements.
+            // SPEC: 4.10 Let a bookmark note the position of formatting element in the list of
+            //           active formatting elements relative to the elements on either side of it in the list.
             // SPEC: 4.11 Let node and last node be furthest block.
             // SPEC: 4.12 Let inner loop counter be 0.
             // SPEC: 4.13 While true:
@@ -1713,7 +1692,8 @@ impl<'a> Parser<'a> {
                     .push(Token::Character { data: *data });
             }
             _ => {
-                // SPEC: If any of the tokens in the pending table character tokens list are character tokens that are not ASCII whitespace,
+                // SPEC: If any of the tokens in the pending table character
+                //       tokens list are character tokens that are not ASCII whitespace,
                 let all_are_whitespace = self.pending_table_character_tokens.iter().all(|c| {
                     if let Token::Character { data } = c {
                         return data.is_ascii_whitespace();
@@ -2008,6 +1988,43 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn process_token_using_the_rules_for(
+        &mut self,
+        insertion_mode: InsertionMode,
+        token: &mut Token,
+    ) {
+        eprintln!(
+            "\x1b[32m[Parser::InsertionMode::{:?}] {:?}\x1b[0m",
+            insertion_mode, token
+        );
+
+        match insertion_mode {
+            InsertionMode::Initial => self.handle_initial(token),
+            InsertionMode::BeforeHtml => self.handle_before_html(token),
+            InsertionMode::BeforeHead => self.handle_before_head(token),
+            InsertionMode::InHead => self.handle_in_head(token),
+            InsertionMode::InHeadNoscript => todo!("InsertionMode::InHeadNoscript"),
+            InsertionMode::AfterHead => self.handle_after_head(token),
+            InsertionMode::InBody => self.handle_in_body(token),
+            InsertionMode::Text => self.handle_text(token),
+            InsertionMode::InTable => self.handle_in_table(token),
+            InsertionMode::InTableText => self.handle_in_table_text(token),
+            InsertionMode::InCaption => todo!("InsertionMode::InCaption"),
+            InsertionMode::InColumnGroup => todo!("InsertionMode::InColumnGroup"),
+            InsertionMode::InTableBody => self.handle_in_table_body(token),
+            InsertionMode::InRow => self.handle_in_row(token),
+            InsertionMode::InCell => todo!("InsertionMode::InCell"),
+            InsertionMode::InSelect => todo!("InsertionMode::InSelect"),
+            InsertionMode::InSelectInTable => todo!("InsertionMode::InSelectInTable"),
+            InsertionMode::InTemplate => todo!("InsertionMode::InTemplate"),
+            InsertionMode::AfterBody => self.handle_after_body(token),
+            InsertionMode::InFrameset => todo!("InsertionMode::InFrameset"),
+            InsertionMode::AfterFrameset => todo!("InsertionMode::AfterFrameset"),
+            InsertionMode::AfterAfterBody => self.handle_after_after_body(token),
+            InsertionMode::AfterAfterFrameset => todo!("InsertionMode::AfterAfterFrameset"),
+        }
+    }
+
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inforeign
     fn process_token_using_the_rules_for_foreign_content(&mut self, token: &mut Token) {
         eprintln!(
@@ -2015,7 +2032,8 @@ impl<'a> Parser<'a> {
             self.insertion_mode, token
         );
 
-        // SPEC: When the user agent is to apply the rules for parsing tokens in foreign content, the user agent must handle the token as follows:
+        // SPEC: When the user agent is to apply the rules for parsing
+        //       tokens in foreign content, the user agent must handle the token as follows:
         match token {
             Token::Character { data } if data == &'\u{0000}' => {
                 // SPEC: Parse error.
@@ -2141,7 +2159,8 @@ impl<'a> Parser<'a> {
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#stop-parsing
     fn stop_parsing(&mut self) {
-        // SPEC: 1. If the active speculative HTML parser is not null, then stop the speculative HTML parser and return.
+        // SPEC: 1. If the active speculative HTML parser is not null,
+        //          then stop the speculative HTML parser and return.
         // FIXME: Implement
         // SPEC: 2. Set the insertion point to undefined.
         self.tokenizer.set_insertion_point(None);
@@ -2149,15 +2168,19 @@ impl<'a> Parser<'a> {
         // FIXME: Implement
         // SPEC: 4. Pop all the nodes off the stack of open elements.
         self.stack_of_open_elements.clear();
-        // SPEC: 5. While the list of scripts that will execute when the document has finished parsing is not empty:
+        // SPEC: 5. While the list of scripts that will execute when the
+        //          document has finished parsing is not empty:
         // FIXME: Implement
-        // SPEC: 6. Queue a global task on the DOM manipulation task source given the Document's relevant global object to run the following substeps:
+        // SPEC: 6. Queue a global task on the DOM manipulation task source
+        //          given the Document's relevant global object to run the following substeps:
         // FIXME: Implement
-        // SPEC: 7. Spin the event loop until the set of scripts that will execute as soon as possible and the list of scripts that will execute in order as soon as possible are empty.
+        // SPEC: 7. Spin the event loop until the set of scripts that will execute
+        //          as soon as possible and the list of scripts that will execute in order as soon as possible are empty.
         // FIXME: Implement
         // SPEC: 8. Spin the event loop until there is nothing that delays the load event in the Document.
         // FIXME: Implement
-        // SPEC: 9. Queue a global task on the DOM manipulation task source given the Document's relevant global object to run the following steps:
+        // SPEC: 9. Queue a global task on the DOM manipulation task source
+        //          given the Document's relevant global object to run the following steps:
         // SPEC: 10. If the Document's print when loaded flag is set, then run the printing steps.
         // FIXME: Implement
         // SPEC: 11. The Document is now ready for post-load tasks.

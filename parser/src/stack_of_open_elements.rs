@@ -122,7 +122,9 @@ impl<'a> StackOfOpenElements<'a> {
             if node.is_element_with_one_of_tags(list) {
                 return false;
             }
-            // SPEC: 4. Otherwise, set node to the previous entry in the stack of open elements and return to step 2. (This will never fail, since the loop will always terminate in the previous step if the top of the stack — an html element — is reached.)
+            // SPEC: 4. Otherwise, set node to the previous entry in the stack of open elements and return to step 2.
+            //         (This will never fail, since the loop will always terminate in the
+            //         previous step if the top of the stack — an html element — is reached.)
         }
         unreachable!();
     }
