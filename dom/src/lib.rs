@@ -1,6 +1,5 @@
 pub mod arena;
 pub mod dom_exception;
-pub mod element;
 pub mod node;
 pub mod ranges;
 

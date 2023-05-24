@@ -2,7 +2,6 @@ use std::cell::{Cell, RefCell};
 
 use crate::arena::{NodeLink, NodeRef};
 use crate::dom_exception::DomException;
-use crate::element::Element;
 use crate::{Attribute, QualifiedName};
 
 /// A HTML Node.
@@ -639,7 +638,7 @@ pub enum NodeData {
         qualified_name: QualifiedName,
         name: String,
         value: String,
-        owner_element: Option<Element>,
+        owner_element: Option<()>,
     },
 }
 
