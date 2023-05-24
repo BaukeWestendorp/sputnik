@@ -125,13 +125,13 @@ impl<'a> Parser<'a> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#generate-implied-end-tags
-    fn generate_implied_end_tags_except_for(&mut self, except_for: &str) {
+    fn generate_implied_end_tags_except_for(&mut self, except_for: Option<&str>) {
         // SPEC: while the current node is a dd element, a dt element, an li element, an optgroup element,
         //       an option element, a p element, an rb element, an rp element, an rt element, or an rtc element,
         //       the UA must pop the current node off the stack of open elements.
         let mut current = self.current_node();
         while let Some(node) = current {
-            if node.element_tag_name() == Some(except_for) {
+            if node.element_tag_name() == except_for {
                 break;
             }
 
@@ -432,7 +432,7 @@ impl<'a> Parser<'a> {
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#close-a-p-element
     fn close_a_p_element(&mut self) {
         // SPEC: Generate implied end tags, except for p elements.
-        self.generate_implied_end_tags_except_for("p");
+        self.generate_implied_end_tags_except_for(Some("p"));
 
         // SPEC: If the current node is not a p element, then this is a parse error.
         if let Some(NodeData::Element { name, .. }) = self.current_node().map(|c| &c.data) {
@@ -1203,7 +1203,28 @@ impl<'a> Parser<'a> {
                     || name == "summary"
                     || name == "ul" =>
             {
-                todo!()
+                // SPEC: If the stack of open elements does not have an element in scope that is
+                //       an HTML element with the same tag name as that of the token,
+                if self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_scope(name)
+                {
+                    // SPEC: then this is a parse error; ignore the token.
+                    log_parser_error!();
+                    return;
+                }
+                // SPEC: Otherwise, run these steps:
+                // SPEC: 1. Generate implied end tags.
+                self.generate_implied_end_tags_except_for(None);
+                // SPEC: 2. If the current node is not an HTML element with the same tag name as that of the token,
+                if !self.current_node_is_one_of_elements_with_tag(&[]) {
+                    // SPEC: then this is a parse error.
+                    log_parser_error!("Found closing tag, but current node is not an HTML element with the same tag name.");
+                }
+                // SPEC: 3. Pop elements from the stack of open elements until an HTML element with
+                //          the same tag name as the token has been popped from the stack.
+                self.stack_of_open_elements
+                    .pop_elements_until_element_has_been_popped(name);
             }
             Token::EndTag { name, .. } if name == "form" => todo!(),
             Token::EndTag { name, .. } if name == "p" => {
@@ -1401,7 +1422,7 @@ impl<'a> Parser<'a> {
             let token_tag_name = token.tag_name().expect("token should be EndTag");
             if node.is_element_with_tag(&token_tag_name) {
                 // SPEC: 2.1. Generate implied end tags, except for HTML elements with the same tag name as the token.
-                self.generate_implied_end_tags_except_for(&token_tag_name);
+                self.generate_implied_end_tags_except_for(Some(&token_tag_name));
                 // SPEC: 2.2. If node is not the current node, then this is a parse error.
                 if Node::are_same(node, self.current_node().unwrap()) {
                     log_parser_error!();

@@ -88,8 +88,11 @@ impl<'a> StackOfOpenElements<'a> {
         None
     }
 
-    pub fn contains(&self, element: NodeRef<'a>) -> bool {
-        self.elements.contains(&element)
+    pub fn contains(&self, target: NodeRef<'a>) -> bool {
+        self.elements
+            .iter()
+            .find(|element| Node::are_same(element, target))
+            .is_some()
     }
 
     pub fn contains_one_of_tags(&self, tags: &[&str]) -> bool {
