@@ -2,8 +2,8 @@ use dom::arena::Ref;
 use dom::node::{Node, NodeData};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
-pub struct StackOfOpenElements<'arena> {
-    pub elements: Vec<Ref<'arena>>,
+pub struct StackOfOpenElements<'a> {
+    pub elements: Vec<Ref<'a>>,
 }
 
 static BASE_SCOPE_ELEMENTS: &[&str] = &[
@@ -27,19 +27,19 @@ static BASE_SCOPE_ELEMENTS: &[&str] = &[
     "title",
 ];
 
-impl<'arena> StackOfOpenElements<'arena> {
+impl<'a> StackOfOpenElements<'a> {
     pub fn new() -> Self {
         Self {
             elements: Vec::new(),
         }
     }
 
-    pub fn current_node(&self) -> Option<Ref<'arena>> {
+    pub fn current_node(&self) -> Option<Ref<'a>> {
         // SPEC: The current node is the bottommost node in this stack of open elements.
         self.elements.last().copied()
     }
 
-    pub fn first(&self) -> Option<Ref<'arena>> {
+    pub fn first(&self) -> Option<Ref<'a>> {
         self.elements.first().copied()
     }
 
@@ -51,7 +51,7 @@ impl<'arena> StackOfOpenElements<'arena> {
         self.elements.clear()
     }
 
-    pub fn push(&mut self, element: Ref<'arena>) {
+    pub fn push(&mut self, element: Ref<'a>) {
         self.elements.push(element);
     }
 
@@ -70,13 +70,13 @@ impl<'arena> StackOfOpenElements<'arena> {
         }
     }
 
-    pub fn remove_element(&mut self, element: Ref<'arena>) {
+    pub fn remove_element(&mut self, element: Ref<'a>) {
         if let Some(index) = self.elements.iter().position(|e| e == &element) {
             self.elements.remove(index);
         }
     }
 
-    pub fn element_immediately_above(&self, target: Ref<'arena>) -> Option<Ref<'arena>> {
+    pub fn element_immediately_above(&self, target: Ref<'a>) -> Option<Ref<'a>> {
         let mut found = false;
         for element in self.elements.iter().rev() {
             if Node::are_same(element, target) {
@@ -88,7 +88,7 @@ impl<'arena> StackOfOpenElements<'arena> {
         None
     }
 
-    pub fn contains(&self, element: Ref<'arena>) -> bool {
+    pub fn contains(&self, element: Ref<'a>) -> bool {
         self.elements.contains(&element)
     }
 
@@ -101,7 +101,7 @@ impl<'arena> StackOfOpenElements<'arena> {
         })
     }
 
-    pub fn last_with_tag(&self, tag: &str) -> Option<(usize, Ref<'arena>)> {
+    pub fn last_with_tag(&self, tag: &str) -> Option<(usize, Ref<'a>)> {
         self.elements
             .iter()
             .rev()

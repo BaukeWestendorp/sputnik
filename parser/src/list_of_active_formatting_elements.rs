@@ -1,14 +1,14 @@
 use dom::arena::Ref;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
-pub struct ListOfActiveFormattingElements<'arena> {
-    elements: Vec<ActiveFormattingElement<'arena>>,
+pub struct ListOfActiveFormattingElements<'a> {
+    elements: Vec<ActiveFormattingElement<'a>>,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
-pub enum ActiveFormattingElement<'arena> {
+pub enum ActiveFormattingElement<'a> {
     Marker,
-    Element(Ref<'arena>),
+    Element(Ref<'a>),
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
@@ -18,7 +18,7 @@ pub enum Position {
 }
 
 // FIXME: This should probably inherit from Vec or something.
-impl<'arena> ListOfActiveFormattingElements<'arena> {
+impl<'a> ListOfActiveFormattingElements<'a> {
     pub fn new() -> Self {
         Self {
             elements: Vec::new(),
@@ -29,7 +29,7 @@ impl<'arena> ListOfActiveFormattingElements<'arena> {
         self.elements.len()
     }
 
-    pub(crate) fn remove(&mut self, element: Ref<'arena>) {
+    pub(crate) fn remove(&mut self, element: Ref<'a>) {
         if let Some(index) = self
             .elements
             .iter()
@@ -52,7 +52,7 @@ impl<'arena> ListOfActiveFormattingElements<'arena> {
     }
 
     #[allow(unused)]
-    pub fn last_marker(&self) -> Option<ActiveFormattingElement<'arena>> {
+    pub fn last_marker(&self) -> Option<ActiveFormattingElement<'a>> {
         self.elements
             .iter()
             .rev()
@@ -65,7 +65,7 @@ impl<'arena> ListOfActiveFormattingElements<'arena> {
         start_index: usize,
         end_index: usize,
         tag_name: &str,
-    ) -> Option<ActiveFormattingElement<'arena>> {
+    ) -> Option<ActiveFormattingElement<'a>> {
         self.elements
             .iter()
             .rev()
@@ -80,7 +80,7 @@ impl<'arena> ListOfActiveFormattingElements<'arena> {
             .map(|element| *element.1)
     }
 
-    pub fn contains(&self, element: ActiveFormattingElement<'arena>) -> bool {
+    pub fn contains(&self, element: ActiveFormattingElement<'a>) -> bool {
         self.elements.contains(&element)
     }
 

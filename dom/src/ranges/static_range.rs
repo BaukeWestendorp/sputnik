@@ -8,26 +8,26 @@ use crate::ranges::{AbstractRange, BoundaryPoint, BoundaryPointPosition};
 
 // SPECLINK: https://dom.spec.whatwg.org/#interface-staticrange
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct StaticRange<'arena> {
-    start: BoundaryPoint<'arena>,
-    end: BoundaryPoint<'arena>,
+pub struct StaticRange<'a> {
+    start: BoundaryPoint<'a>,
+    end: BoundaryPoint<'a>,
 }
 
-impl<'arena> AbstractRange<'arena> for StaticRange<'arena> {
-    fn start(&self) -> &BoundaryPoint<'arena> {
+impl<'a> AbstractRange<'a> for StaticRange<'a> {
+    fn start(&self) -> &BoundaryPoint<'a> {
         &self.start
     }
 
-    fn end(&self) -> &BoundaryPoint<'arena> {
+    fn end(&self) -> &BoundaryPoint<'a> {
         &self.end
     }
 }
 
-impl<'arena> StaticRange<'arena> {
+impl<'a> StaticRange<'a> {
     pub fn new(
-        start_container: Ref<'arena>,
+        start_container: Ref<'a>,
         start_offset: usize,
-        end_container: Ref<'arena>,
+        end_container: Ref<'a>,
         end_offset: usize,
     ) -> Result<Self, DomException> {
         // SPEC: 1. If init["startContainer"] or init["endContainer"] is a DocumentType or Attr node,

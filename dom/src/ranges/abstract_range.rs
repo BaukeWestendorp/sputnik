@@ -13,15 +13,15 @@ pub enum BoundaryPointPosition {
 
 // SPECLINK: https://dom.spec.whatwg.org/#boundary-points
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct BoundaryPoint<'arena> {
+pub struct BoundaryPoint<'a> {
     // SPEC: A boundary point is a tuple consisting of a node (a node)
-    pub node: Ref<'arena>,
+    pub node: Ref<'a>,
     // SPEC: and an offset (a non-negative integer).
     pub offset: usize,
 }
 
-impl<'arena> BoundaryPoint<'arena> {
-    pub fn new(node: Ref<'arena>, offset: usize) -> Self {
+impl<'a> BoundaryPoint<'a> {
+    pub fn new(node: Ref<'a>, offset: usize) -> Self {
         Self { node, offset }
     }
 
@@ -31,7 +31,7 @@ impl<'arena> BoundaryPoint<'arena> {
         range.contains(&self.offset)
     }
 
-    pub fn position(&self, relative_to: BoundaryPoint<'arena>) -> BoundaryPointPosition {
+    pub fn position(&self, relative_to: BoundaryPoint<'a>) -> BoundaryPointPosition {
         // SPEC: 1. Assert: nodeA and nodeB have the same root.
         assert!(Node::have_same_root(self.node, relative_to.node));
 
@@ -81,10 +81,10 @@ impl<'arena> BoundaryPoint<'arena> {
     }
 }
 
-pub trait AbstractRange<'arena> {
-    fn start(&self) -> &BoundaryPoint<'arena>;
+pub trait AbstractRange<'a> {
+    fn start(&self) -> &BoundaryPoint<'a>;
 
-    fn end(&self) -> &BoundaryPoint<'arena>;
+    fn end(&self) -> &BoundaryPoint<'a>;
 
     fn collapsed(&self) -> bool {
         Node::are_same(self.start().node, self.end().node)

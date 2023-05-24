@@ -7,19 +7,19 @@ use crate::{Attribute, QualifiedName};
 
 /// A HTML Node.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct Node<'arena> {
-    document: Link<'arena>,
-    parent: Link<'arena>,
-    children: RefCell<Vec<Ref<'arena>>>,
-    previous_sibling: Link<'arena>,
-    next_sibling: Link<'arena>,
-    first_child: Link<'arena>,
-    last_child: Link<'arena>,
+pub struct Node<'a> {
+    document: Link<'a>,
+    parent: Link<'a>,
+    children: RefCell<Vec<Ref<'a>>>,
+    previous_sibling: Link<'a>,
+    next_sibling: Link<'a>,
+    first_child: Link<'a>,
+    last_child: Link<'a>,
     pub data: NodeData,
 }
 
-impl<'arena> Node<'arena> {
-    pub fn new(document: Option<Ref<'arena>>, data: NodeData) -> Node<'arena> {
+impl<'a> Node<'a> {
+    pub fn new(document: Option<Ref<'a>>, data: NodeData) -> Node<'a> {
         Node {
             document: Cell::new(document),
             parent: Cell::new(None),
@@ -32,7 +32,7 @@ impl<'arena> Node<'arena> {
         }
     }
 
-    pub fn root(&'arena self) -> Ref<'arena> {
+    pub fn root(&'a self) -> Ref<'a> {
         // SPEC: The root of an object is itself, if its parent is null,
         //       or else it is the root of its parent.
         //       The root of a tree is any object participating in that tree whose parent is null.
@@ -40,11 +40,11 @@ impl<'arena> Node<'arena> {
         self.document()
     }
 
-    pub fn are_same(a: Ref<'arena>, b: Ref<'arena>) -> bool {
+    pub fn are_same(a: Ref<'a>, b: Ref<'a>) -> bool {
         std::ptr::eq(a, b)
     }
 
-    pub fn are_same_optional(a: Option<Ref<'arena>>, b: Option<Ref<'arena>>) -> bool {
+    pub fn are_same_optional(a: Option<Ref<'a>>, b: Option<Ref<'a>>) -> bool {
         if let Some(a) = a {
             if let Some(b) = b {
                 return std::ptr::eq(a, b);
@@ -54,63 +54,63 @@ impl<'arena> Node<'arena> {
         a.is_none() && b.is_none()
     }
 
-    pub fn have_same_root(a: Ref<'arena>, b: Ref<'arena>) -> bool {
+    pub fn have_same_root(a: Ref<'a>, b: Ref<'a>) -> bool {
         Node::are_same(a.root(), b.root())
     }
 
-    pub fn is_following(&'arena self, _other: Ref<'arena>) -> bool {
+    pub fn is_following(&'a self, _other: Ref<'a>) -> bool {
         // SPEC: An object A is following an object B if A and B are
         //       in the same tree and A comes after B in tree order.
         todo!()
     }
 
-    pub fn is_preceding(&'arena self, _other: Ref<'arena>) -> bool {
+    pub fn is_preceding(&'a self, _other: Ref<'a>) -> bool {
         // SPEC: An object A is following an object B if A and B are
         //       in the same tree and A comes after B in tree order.
         todo!()
     }
 
-    pub fn is_ancestor_of(&self, _other: Ref<'arena>) -> bool {
+    pub fn is_ancestor_of(&self, _other: Ref<'a>) -> bool {
         todo!()
     }
 
-    pub fn is_child_of(&self, _other: Ref<'arena>) -> bool {
+    pub fn is_child_of(&self, _other: Ref<'a>) -> bool {
         todo!()
     }
 
-    pub fn document(&'arena self) -> Ref<'arena> {
+    pub fn document(&'a self) -> Ref<'a> {
         match self.document.get() {
             Some(document) => document,
             None => self,
         }
     }
 
-    pub fn parent(&self) -> Option<Ref<'arena>> {
+    pub fn parent(&self) -> Option<Ref<'a>> {
         self.parent.get()
     }
 
-    pub fn previous_sibling(&self) -> Option<Ref<'arena>> {
+    pub fn previous_sibling(&self) -> Option<Ref<'a>> {
         self.previous_sibling.get()
     }
 
-    pub fn next_sibling(&self) -> Option<Ref<'arena>> {
+    pub fn next_sibling(&self) -> Option<Ref<'a>> {
         self.next_sibling.get()
     }
 
-    pub fn first_child(&self) -> Option<Ref<'arena>> {
+    pub fn first_child(&self) -> Option<Ref<'a>> {
         self.first_child.get()
     }
 
-    pub fn last_child(&self) -> Option<Ref<'arena>> {
+    pub fn last_child(&self) -> Option<Ref<'a>> {
         self.last_child.get()
     }
 
-    pub fn children(&'arena self) -> std::cell::Ref<Vec<Ref<'arena>>> {
+    pub fn children(&'a self) -> std::cell::Ref<Vec<Ref<'a>>> {
         self.children.borrow()
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-tree-inclusive-ancestor
-    pub fn inclusive_anscestors(&'arena self) -> Vec<Ref<'arena>> {
+    pub fn inclusive_anscestors(&'a self) -> Vec<Ref<'a>> {
         let mut nodes = Vec::new();
         let mut current = self.parent();
         while let Some(inclusive_anscestor) = current {
@@ -291,7 +291,7 @@ impl<'arena> Node<'arena> {
         ])
     }
 
-    pub fn length(&'arena self) -> usize {
+    pub fn length(&'a self) -> usize {
         if self.is_doctype() || self.is_attr() {
             0
         } else if let NodeData::CharacterData { data, .. } = self.data.clone() {
@@ -308,11 +308,11 @@ impl<'arena> Node<'arena> {
         None
     }
 
-    pub fn dump(&'arena self) {
+    pub fn dump(&'a self) {
         self.internal_dump("");
     }
 
-    fn internal_dump(&'arena self, indentation: &str) {
+    fn internal_dump(&'a self, indentation: &str) {
         let indent = "  ";
 
         let (opening_tag, closing_tag) = self.data.tags();
@@ -331,7 +331,7 @@ impl<'arena> Node<'arena> {
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-tree-index
-    pub fn index(&'arena self) -> usize {
+    pub fn index(&'a self) -> usize {
         let mut index = 0;
         let mut current = self.previous_sibling();
         while let Some(node) = current {
@@ -342,18 +342,18 @@ impl<'arena> Node<'arena> {
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-descendant
-    fn shadow_including_inclusive_descendants(&'arena self) -> std::cell::Ref<Vec<Ref<'arena>>> {
+    fn shadow_including_inclusive_descendants(&'a self) -> std::cell::Ref<Vec<Ref<'a>>> {
         // FIXME: Currently we assume every node is an inclusive descendant of the shadow root
         self.children()
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-node-remove
-    pub fn remove(&'arena self, _node: &'arena Self) {
+    pub fn remove(&'a self, _node: &'a Self) {
         todo!()
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-node-adopt
-    pub fn adopt(&'arena self, node: &'arena Self) {
+    pub fn adopt(&'a self, node: &'a Self) {
         if !self.is_document() {
             panic!("only the Document Node should adopt nodes");
         }
@@ -392,15 +392,15 @@ impl<'arena> Node<'arena> {
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-node-append
-    pub fn append(&'arena self, child: &'arena Self) {
+    pub fn append(&'a self, child: &'a Self) {
         self.pre_insert(child, None);
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-node-ensure-pre-insertion-validity
     pub fn ensure_pre_insertion_validity(
-        &'arena self,
-        node: Ref<'arena>,
-        child: Option<Ref<'arena>>,
+        &'a self,
+        node: Ref<'a>,
+        child: Option<Ref<'a>>,
     ) -> Result<(), DomException> {
         // SPEC: 1. If parent is not a Document, DocumentFragment, or Element node, then throw a "HierarchyRequestError" DOMException.
         if !self.is_document() && !self.is_document_fragment() && !self.is_element() {
@@ -463,7 +463,7 @@ impl<'arena> Node<'arena> {
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-node-insert
-    pub fn insert_before(&'arena self, node: &'arena Self, child: Option<&'arena Self>) {
+    pub fn insert_before(&'a self, node: &'a Self, child: Option<&'a Self>) {
         // SPEC: 1. Let nodes be node’s children, if node is a DocumentFragment node; otherwise « node ».
         let mut nodes = Vec::new();
         match node.is_document_fragment() {
@@ -556,7 +556,7 @@ impl<'arena> Node<'arena> {
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-node-pre-insert
-    fn pre_insert(&'arena self, node: &'arena Self, child: Option<&'arena Self>) -> &'arena Self {
+    fn pre_insert(&'a self, node: &'a Self, child: Option<&'a Self>) -> &'a Self {
         // SPEC: 1. Ensure pre-insertion validity of node into parent before child.
         // FIXME: Implement
 
@@ -576,7 +576,7 @@ impl<'arena> Node<'arena> {
     }
 }
 
-impl<'arena> std::fmt::Debug for Node<'arena> {
+impl<'a> std::fmt::Debug for Node<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // destructuring will make it fail to compile
         // if you later add a field and forget to update here
