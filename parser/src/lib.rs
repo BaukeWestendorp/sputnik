@@ -896,7 +896,12 @@ impl<'arena> Parser<'arena> {
             Token::StartTag { name, .. }
                 if name == "base" || name == "basefont" || name == "bgsound" || name == "link" =>
             {
-                todo!()
+                // SPEC: Insert an HTML element for the token.
+                self.insert_html_element_for_token(token);
+                // SPEC:Immediately pop the current node off the stack of open elements.
+                self.stack_of_open_elements.pop_current_element();
+                // SPEC: Acknowledge the token's self-closing flag, if it is set.
+                token.acknowledge_self_closing_flag_if_set();
             }
             Token::StartTag { name, .. } if name == "meta" => {
                 // SPEC: Insert an HTML element for the token.
