@@ -145,17 +145,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#push-onto-the-list-of-active-formatting-elements
-    fn push_onto_the_list_of_active_formatting_elements(&self, _element: NodeRef<'a>) {
-        // SPEC: 1. If there are already three elements in the list of active formatting elements after the last marker, if any,
-        //          or anywhere in the list if there are no markers, that have the same tag name, namespace, and attributes as element,
-        //          then remove the earliest such element from the list of active formatting elements.
-        //          For these purposes, the attributes must be compared as they were when the elements were created by the parser;
-        //          two elements have the same attributes if all their parsed attributes can be paired such that
-        //          the two attributes in each pair have identical names, namespaces, and values (the order of the attributes does not matter).
-        todo!()
-    }
-
     fn switch_insertion_mode_to(&mut self, insertion_mode: InsertionMode) {
         self.insertion_mode = insertion_mode
     }
@@ -244,7 +233,7 @@ impl<'a> Parser<'a> {
                         // SPEC: 15.2 Otherwise, the head element pointer is not null, switch the insertion mode to "after head" and return.
                         self.switch_insertion_mode_to(InsertionMode::AfterHead);
                     }
-                    _ => panic!("Unhandled tag"),
+                    _ => {}
                 }
             }
 
@@ -1247,26 +1236,34 @@ impl<'a> Parser<'a> {
             {
                 todo!()
             }
-            Token::EndTag { name, .. } if name == "sarcasm" => todo!(),
             Token::StartTag { name, .. } if name == "a" => {
                 use list_of_active_formatting_elements::Position;
 
                 // SPEC: If the list of active formatting elements contains an a element between
                 //       the end of the list and the last marker on the list
                 //        (or the start of the list if there is no marker on the list),
-                //       then this is a parse error;
-                //       run the adoption agency algorithm for the token,
-                //       then remove that element from the list of active formatting
-                //        elements and the stack of open elements
-                //       if the adoption agency algorithm didn't already remove it
-                //        (it might not have if the element is not in table scope).
                 if self
                     .list_of_active_formatting_elements
                     .contains_element_between(Position::End, Position::LastMarkerOrElseStart, "a")
                 {
+                    // SPEC: then this is a parse error;
                     log_parser_error!();
+                    //       run the adoption agency algorithm for the token,
+                    self.run_the_adoption_agency_algorithm_for_token(token);
+                    // SPEC: then remove that element from the list of active formatting
+                    //       elements and the stack of open elements
+                    //       if the adoption agency algorithm didn't already remove it
+                    //       (it might not have if the element is not in table scope).
                     todo!()
                 }
+
+                // SPEC: Reconstruct the active formatting elements, if any.
+                self.reconstruct_active_formatting_elements_if_any();
+                // SPEC: Insert an HTML element for the token.
+                let element = self.insert_html_element_for_token(token);
+                // SPEC: Push onto the list of active formatting elements that element.
+                self.list_of_active_formatting_elements
+                    .push_element(element);
             }
             Token::StartTag { name, .. }
                 if name == "b"
@@ -1287,7 +1284,8 @@ impl<'a> Parser<'a> {
                 // SPEC: Insert an HTML element for the token.
                 let element = self.insert_html_element_for_token(token);
                 // SPEC: Push onto the list of active formatting elements that element.
-                self.push_onto_the_list_of_active_formatting_elements(element);
+                self.list_of_active_formatting_elements
+                    .push_element(element);
             }
             Token::StartTag { name, .. } if name == "nobr" => todo!(),
             Token::EndTag { name, .. }
@@ -1306,6 +1304,7 @@ impl<'a> Parser<'a> {
                     || name == "tt"
                     || name == "u" =>
             {
+                // SPEC: Run the adoption agency algorithm for the token.
                 self.run_the_adoption_agency_algorithm_for_token(token);
             }
 

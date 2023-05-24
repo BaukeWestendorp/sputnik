@@ -1,4 +1,5 @@
 use dom::arena::NodeRef;
+use dom::node::Node;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct ListOfActiveFormattingElements<'a> {
@@ -25,11 +26,18 @@ impl<'a> ListOfActiveFormattingElements<'a> {
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.elements.len()
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#push-onto-the-list-of-active-formatting-elements
+    pub fn push_element(&mut self, element: NodeRef<'a>) {
+        // FIXME: Implement Noah's Ark clause.
+        self.elements
+            .push(ActiveFormattingElement::Element(element));
     }
 
-    pub(crate) fn remove(&mut self, element: NodeRef<'a>) {
+    pub fn insert_marker_at_end(&mut self) {
+        self.elements.push(ActiveFormattingElement::Marker);
+    }
+
+    pub fn remove(&mut self, element: NodeRef<'a>) {
         if let Some(index) = self
             .elements
             .iter()
@@ -39,9 +47,8 @@ impl<'a> ListOfActiveFormattingElements<'a> {
         }
     }
 
-    #[allow(unused)]
-    pub fn number_of_elements_after_last_marker() -> usize {
-        todo!()
+    pub fn len(&self) -> usize {
+        self.elements.len()
     }
 
     pub fn last_marker_index(&self) -> Option<usize> {
@@ -49,15 +56,6 @@ impl<'a> ListOfActiveFormattingElements<'a> {
             .iter()
             .rev()
             .position(|element| matches!(element, ActiveFormattingElement::Marker))
-    }
-
-    #[allow(unused)]
-    pub fn last_marker(&self) -> Option<ActiveFormattingElement<'a>> {
-        self.elements
-            .iter()
-            .rev()
-            .find(|element| matches!(element, ActiveFormattingElement::Marker))
-            .copied()
     }
 
     pub fn last_element_that_is_between_index_and_has_tag_name(
@@ -80,8 +78,22 @@ impl<'a> ListOfActiveFormattingElements<'a> {
             .map(|element| *element.1)
     }
 
-    pub fn contains(&self, element: ActiveFormattingElement<'a>) -> bool {
-        self.elements.contains(&element)
+    pub fn contains(&self, target: ActiveFormattingElement<'a>) -> bool {
+        self.elements
+            .iter()
+            .find(|element| {
+                if matches!(target, ActiveFormattingElement::Marker) {
+                    return matches!(element, ActiveFormattingElement::Marker);
+                }
+
+                if let ActiveFormattingElement::Element(element) = element {
+                    if let ActiveFormattingElement::Element(target) = target {
+                        return Node::are_same(element, target);
+                    }
+                }
+                false
+            })
+            .is_some()
     }
 
     pub fn contains_element_between(&self, start: Position, end: Position, tag_name: &str) -> bool {
@@ -97,10 +109,6 @@ impl<'a> ListOfActiveFormattingElements<'a> {
             }
         }
         false
-    }
-
-    pub fn insert_marker_at_end(&mut self) {
-        self.elements.push(ActiveFormattingElement::Marker);
     }
 
     fn index_from_position(&self, position: Position) -> Option<usize> {
