@@ -1,7 +1,7 @@
 // FIXME: Remove when we actually use ranges
 #![allow(dead_code)]
 
-use crate::arena::Ref;
+use crate::arena::NodeRef;
 use crate::node::Node;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -15,13 +15,13 @@ pub enum BoundaryPointPosition {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct BoundaryPoint<'a> {
     // SPEC: A boundary point is a tuple consisting of a node (a node)
-    pub node: Ref<'a>,
+    pub node: NodeRef<'a>,
     // SPEC: and an offset (a non-negative integer).
     pub offset: usize,
 }
 
 impl<'a> BoundaryPoint<'a> {
-    pub fn new(node: Ref<'a>, offset: usize) -> Self {
+    pub fn new(node: NodeRef<'a>, offset: usize) -> Self {
         Self { node, offset }
     }
 

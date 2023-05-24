@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 
-use crate::arena::{Link, Ref};
+use crate::arena::{NodeLink, NodeRef};
 use crate::dom_exception::DomException;
 use crate::element::Element;
 use crate::{Attribute, QualifiedName};
@@ -8,18 +8,18 @@ use crate::{Attribute, QualifiedName};
 /// A HTML Node.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Node<'a> {
-    document: Link<'a>,
-    parent: Link<'a>,
-    children: RefCell<Vec<Ref<'a>>>,
-    previous_sibling: Link<'a>,
-    next_sibling: Link<'a>,
-    first_child: Link<'a>,
-    last_child: Link<'a>,
+    document: NodeLink<'a>,
+    parent: NodeLink<'a>,
+    children: RefCell<Vec<NodeRef<'a>>>,
+    previous_sibling: NodeLink<'a>,
+    next_sibling: NodeLink<'a>,
+    first_child: NodeLink<'a>,
+    last_child: NodeLink<'a>,
     pub data: NodeData,
 }
 
 impl<'a> Node<'a> {
-    pub fn new(document: Option<Ref<'a>>, data: NodeData) -> Node<'a> {
+    pub fn new(document: Option<NodeRef<'a>>, data: NodeData) -> Node<'a> {
         Node {
             document: Cell::new(document),
             parent: Cell::new(None),
@@ -32,7 +32,7 @@ impl<'a> Node<'a> {
         }
     }
 
-    pub fn root(&'a self) -> Ref<'a> {
+    pub fn root(&'a self) -> NodeRef<'a> {
         // SPEC: The root of an object is itself, if its parent is null,
         //       or else it is the root of its parent.
         //       The root of a tree is any object participating in that tree whose parent is null.
@@ -40,11 +40,11 @@ impl<'a> Node<'a> {
         self.document()
     }
 
-    pub fn are_same(a: Ref<'a>, b: Ref<'a>) -> bool {
+    pub fn are_same(a: NodeRef<'a>, b: NodeRef<'a>) -> bool {
         std::ptr::eq(a, b)
     }
 
-    pub fn are_same_optional(a: Option<Ref<'a>>, b: Option<Ref<'a>>) -> bool {
+    pub fn are_same_optional(a: Option<NodeRef<'a>>, b: Option<NodeRef<'a>>) -> bool {
         if let Some(a) = a {
             if let Some(b) = b {
                 return std::ptr::eq(a, b);
@@ -54,63 +54,63 @@ impl<'a> Node<'a> {
         a.is_none() && b.is_none()
     }
 
-    pub fn have_same_root(a: Ref<'a>, b: Ref<'a>) -> bool {
+    pub fn have_same_root(a: NodeRef<'a>, b: NodeRef<'a>) -> bool {
         Node::are_same(a.root(), b.root())
     }
 
-    pub fn is_following(&'a self, _other: Ref<'a>) -> bool {
+    pub fn is_following(&'a self, _other: NodeRef<'a>) -> bool {
         // SPEC: An object A is following an object B if A and B are
         //       in the same tree and A comes after B in tree order.
         todo!()
     }
 
-    pub fn is_preceding(&'a self, _other: Ref<'a>) -> bool {
+    pub fn is_preceding(&'a self, _other: NodeRef<'a>) -> bool {
         // SPEC: An object A is following an object B if A and B are
         //       in the same tree and A comes after B in tree order.
         todo!()
     }
 
-    pub fn is_ancestor_of(&self, _other: Ref<'a>) -> bool {
+    pub fn is_ancestor_of(&self, _other: NodeRef<'a>) -> bool {
         todo!()
     }
 
-    pub fn is_child_of(&self, _other: Ref<'a>) -> bool {
+    pub fn is_child_of(&self, _other: NodeRef<'a>) -> bool {
         todo!()
     }
 
-    pub fn document(&'a self) -> Ref<'a> {
+    pub fn document(&'a self) -> NodeRef<'a> {
         match self.document.get() {
             Some(document) => document,
             None => self,
         }
     }
 
-    pub fn parent(&self) -> Option<Ref<'a>> {
+    pub fn parent(&self) -> Option<NodeRef<'a>> {
         self.parent.get()
     }
 
-    pub fn previous_sibling(&self) -> Option<Ref<'a>> {
+    pub fn previous_sibling(&self) -> Option<NodeRef<'a>> {
         self.previous_sibling.get()
     }
 
-    pub fn next_sibling(&self) -> Option<Ref<'a>> {
+    pub fn next_sibling(&self) -> Option<NodeRef<'a>> {
         self.next_sibling.get()
     }
 
-    pub fn first_child(&self) -> Option<Ref<'a>> {
+    pub fn first_child(&self) -> Option<NodeRef<'a>> {
         self.first_child.get()
     }
 
-    pub fn last_child(&self) -> Option<Ref<'a>> {
+    pub fn last_child(&self) -> Option<NodeRef<'a>> {
         self.last_child.get()
     }
 
-    pub fn children(&'a self) -> std::cell::Ref<Vec<Ref<'a>>> {
+    pub fn children(&'a self) -> std::cell::Ref<Vec<NodeRef<'a>>> {
         self.children.borrow()
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-tree-inclusive-ancestor
-    pub fn inclusive_anscestors(&'a self) -> Vec<Ref<'a>> {
+    pub fn inclusive_anscestors(&'a self) -> Vec<NodeRef<'a>> {
         let mut nodes = Vec::new();
         let mut current = self.parent();
         while let Some(inclusive_anscestor) = current {
@@ -342,7 +342,7 @@ impl<'a> Node<'a> {
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-descendant
-    fn shadow_including_inclusive_descendants(&'a self) -> std::cell::Ref<Vec<Ref<'a>>> {
+    fn shadow_including_inclusive_descendants(&'a self) -> std::cell::Ref<Vec<NodeRef<'a>>> {
         // FIXME: Currently we assume every node is an inclusive descendant of the shadow root
         self.children()
     }
@@ -399,8 +399,8 @@ impl<'a> Node<'a> {
     // SPECLINK: https://dom.spec.whatwg.org/#concept-node-ensure-pre-insertion-validity
     pub fn ensure_pre_insertion_validity(
         &'a self,
-        node: Ref<'a>,
-        child: Option<Ref<'a>>,
+        node: NodeRef<'a>,
+        child: Option<NodeRef<'a>>,
     ) -> Result<(), DomException> {
         // SPEC: 1. If parent is not a Document, DocumentFragment, or Element node, then throw a "HierarchyRequestError" DOMException.
         if !self.is_document() && !self.is_document_fragment() && !self.is_element() {

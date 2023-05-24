@@ -1,9 +1,9 @@
-use dom::arena::Ref;
+use dom::arena::NodeRef;
 use dom::node::{Node, NodeData};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct StackOfOpenElements<'a> {
-    pub elements: Vec<Ref<'a>>,
+    pub elements: Vec<NodeRef<'a>>,
 }
 
 static BASE_SCOPE_ELEMENTS: &[&str] = &[
@@ -34,12 +34,12 @@ impl<'a> StackOfOpenElements<'a> {
         }
     }
 
-    pub fn current_node(&self) -> Option<Ref<'a>> {
+    pub fn current_node(&self) -> Option<NodeRef<'a>> {
         // SPEC: The current node is the bottommost node in this stack of open elements.
         self.elements.last().copied()
     }
 
-    pub fn first(&self) -> Option<Ref<'a>> {
+    pub fn first(&self) -> Option<NodeRef<'a>> {
         self.elements.first().copied()
     }
 
@@ -51,7 +51,7 @@ impl<'a> StackOfOpenElements<'a> {
         self.elements.clear()
     }
 
-    pub fn push(&mut self, element: Ref<'a>) {
+    pub fn push(&mut self, element: NodeRef<'a>) {
         self.elements.push(element);
     }
 
@@ -70,13 +70,13 @@ impl<'a> StackOfOpenElements<'a> {
         }
     }
 
-    pub fn remove_element(&mut self, element: Ref<'a>) {
+    pub fn remove_element(&mut self, element: NodeRef<'a>) {
         if let Some(index) = self.elements.iter().position(|e| e == &element) {
             self.elements.remove(index);
         }
     }
 
-    pub fn element_immediately_above(&self, target: Ref<'a>) -> Option<Ref<'a>> {
+    pub fn element_immediately_above(&self, target: NodeRef<'a>) -> Option<NodeRef<'a>> {
         let mut found = false;
         for element in self.elements.iter().rev() {
             if Node::are_same(element, target) {
@@ -88,7 +88,7 @@ impl<'a> StackOfOpenElements<'a> {
         None
     }
 
-    pub fn contains(&self, element: Ref<'a>) -> bool {
+    pub fn contains(&self, element: NodeRef<'a>) -> bool {
         self.elements.contains(&element)
     }
 
@@ -101,7 +101,7 @@ impl<'a> StackOfOpenElements<'a> {
         })
     }
 
-    pub fn last_with_tag(&self, tag: &str) -> Option<(usize, Ref<'a>)> {
+    pub fn last_with_tag(&self, tag: &str) -> Option<(usize, NodeRef<'a>)> {
         self.elements
             .iter()
             .rev()

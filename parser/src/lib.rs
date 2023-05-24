@@ -4,7 +4,7 @@ use crate::list_of_active_formatting_elements::{
     ActiveFormattingElement, ListOfActiveFormattingElements,
 };
 use crate::stack_of_open_elements::StackOfOpenElements;
-use dom::arena::{Arena, Ref};
+use dom::arena::{Arena, NodeRef};
 use dom::node::{CharacterDataVariant, Node, NodeData};
 use dom::{Namespace, QualifiedName};
 use tokenizer::{Token, Tokenizer};
@@ -67,13 +67,13 @@ enum InsertionMode {
 }
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 enum InsertionLocation<'a> {
-    BeforeElement(Ref<'a>),
+    BeforeElement(NodeRef<'a>),
     AfterLastChildIfAny,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 struct AdjustedInsertionLocation<'a> {
-    parent: Ref<'a>,
+    parent: NodeRef<'a>,
     child: InsertionLocation<'a>,
 }
 
@@ -93,7 +93,7 @@ enum FramesetState {
 #[derive(Clone)]
 pub struct Parser<'a> {
     arena: Arena<'a>,
-    document: Ref<'a>,
+    document: NodeRef<'a>,
 
     insertion_mode: InsertionMode,
     original_insertion_mode: InsertionMode,
@@ -101,7 +101,7 @@ pub struct Parser<'a> {
     pending_table_character_tokens: Vec<Token>,
     stack_of_open_elements: StackOfOpenElements<'a>,
     list_of_active_formatting_elements: ListOfActiveFormattingElements<'a>,
-    head_element: Option<Ref<'a>>,
+    head_element: Option<NodeRef<'a>>,
     foster_parenting: bool,
     scripting_flag: bool,
     frameset_ok: FramesetState,
@@ -125,7 +125,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn new_node(&self, document: Ref<'a>, data: NodeData) -> Ref<'a> {
+    fn new_node(&self, document: NodeRef<'a>, data: NodeData) -> NodeRef<'a> {
         self.arena.alloc(Node::new(Some(document), data))
     }
 
@@ -151,7 +151,7 @@ impl<'a> Parser<'a> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#push-onto-the-list-of-active-formatting-elements
-    fn push_onto_the_list_of_active_formatting_elements(&self, _element: Ref<'a>) {
+    fn push_onto_the_list_of_active_formatting_elements(&self, _element: NodeRef<'a>) {
         // SPEC: 1. If there are already three elements in the list of active formatting elements after the last marker, if any,
         //          or anywhere in the list if there are no markers, that have the same tag name, namespace, and attributes as element,
         //          then remove the earliest such element from the list of active formatting elements.
@@ -330,7 +330,7 @@ impl<'a> Parser<'a> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#current-node
-    fn current_node(&self) -> Option<Ref<'a>> {
+    fn current_node(&self) -> Option<NodeRef<'a>> {
         // SPEC: The current node is the bottommost node in this stack of open elements.
         self.stack_of_open_elements.current_node()
     }
@@ -343,7 +343,7 @@ impl<'a> Parser<'a> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#adjusted-current-node
-    fn adjusted_current_node(&self) -> Option<Ref<'a>> {
+    fn adjusted_current_node(&self) -> Option<NodeRef<'a>> {
         // FIXME: Implement
         self.current_node()
     }
@@ -351,7 +351,7 @@ impl<'a> Parser<'a> {
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#appropriate-place-for-inserting-a-node
     fn appropriate_place_for_inserting_node(
         &self,
-        override_target: Option<Ref<'a>>,
+        override_target: Option<NodeRef<'a>>,
     ) -> AdjustedInsertionLocation<'a> {
         let target = match override_target {
             // SPEC: 1. If there was an override target specified, then let target be the override target.
@@ -433,10 +433,10 @@ impl<'a> Parser<'a> {
     // SPECLINK: https://dom.spec.whatwg.org/#concept-create-element
     fn create_element(
         &mut self,
-        document: Ref<'a>,
+        document: NodeRef<'a>,
         name: QualifiedName,
         attributes: Vec<dom::Attribute>,
-    ) -> Ref<'a> {
+    ) -> NodeRef<'a> {
         // FIXME: This does not implement any spec functionality yet!
 
         let element = self.new_node(
@@ -463,7 +463,7 @@ impl<'a> Parser<'a> {
         self.document.append(node);
     }
 
-    fn find_character_insertion_node(&self) -> Option<Ref<'a>> {
+    fn find_character_insertion_node(&self) -> Option<NodeRef<'a>> {
         let adjusted_insertion_location = self.appropriate_place_for_inserting_node(None);
 
         if adjusted_insertion_location.parent.is_document() {
@@ -524,11 +524,11 @@ impl<'a> Parser<'a> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element
-    fn insert_html_element_for_token(&mut self, token: &Token) -> Ref<'a> {
+    fn insert_html_element_for_token(&mut self, token: &Token) -> NodeRef<'a> {
         self.insert_foreign_element_for_token(token, None)
     }
 
-    fn insert_html_element_for_start_token_with_tag(&mut self, tag: &str) -> Ref<'a> {
+    fn insert_html_element_for_start_token_with_tag(&mut self, tag: &str) -> NodeRef<'a> {
         self.insert_html_element_for_token(&Token::StartTag {
             name: tag.to_string(),
             self_closing: false,
@@ -542,7 +542,7 @@ impl<'a> Parser<'a> {
         &mut self,
         token: &Token,
         _namespace: Option<&str>,
-    ) -> Ref<'a> {
+    ) -> NodeRef<'a> {
         // SPEC: 1. Let the adjusted insertion location be the appropriate place for inserting a node.
         let adjusted_insertion_location = self.appropriate_place_for_inserting_node(None);
         // eprintln!("{:#?}", adjusted_insertion_location);
@@ -586,7 +586,11 @@ impl<'a> Parser<'a> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
-    fn create_element_for_token(&mut self, token: &Token, intended_parent: Ref<'a>) -> Ref<'a> {
+    fn create_element_for_token(
+        &mut self,
+        token: &Token,
+        intended_parent: NodeRef<'a>,
+    ) -> NodeRef<'a> {
         // SPEC: 1. If the active speculative HTML parser is not null,
         //          then return the result of creating a speculative mock element given given namespace,
         //          the tag name of the given token,
@@ -2160,7 +2164,7 @@ impl<'a> Parser<'a> {
         // FIXME: Implement
     }
 
-    pub fn parse(&mut self) -> Ref<'a> {
+    pub fn parse(&mut self) -> NodeRef<'a> {
         while let Some(token) = self.tokenizer.next_token() {
             let mut token = token.clone();
 

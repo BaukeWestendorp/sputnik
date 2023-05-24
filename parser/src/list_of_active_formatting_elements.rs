@@ -1,4 +1,4 @@
-use dom::arena::Ref;
+use dom::arena::NodeRef;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct ListOfActiveFormattingElements<'a> {
@@ -8,7 +8,7 @@ pub struct ListOfActiveFormattingElements<'a> {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 pub enum ActiveFormattingElement<'a> {
     Marker,
-    Element(Ref<'a>),
+    Element(NodeRef<'a>),
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
@@ -29,7 +29,7 @@ impl<'a> ListOfActiveFormattingElements<'a> {
         self.elements.len()
     }
 
-    pub(crate) fn remove(&mut self, element: Ref<'a>) {
+    pub(crate) fn remove(&mut self, element: NodeRef<'a>) {
         if let Some(index) = self
             .elements
             .iter()

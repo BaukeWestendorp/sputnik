@@ -1,7 +1,7 @@
 // FIXME: Remove when we actually use ranges
 #![allow(dead_code)]
 
-use crate::arena::Ref;
+use crate::arena::NodeRef;
 use crate::dom_exception::DomException;
 use crate::node::Node;
 use crate::ranges::{AbstractRange, BoundaryPoint, BoundaryPointPosition};
@@ -25,9 +25,9 @@ impl<'a> AbstractRange<'a> for StaticRange<'a> {
 
 impl<'a> StaticRange<'a> {
     pub fn new(
-        start_container: Ref<'a>,
+        start_container: NodeRef<'a>,
         start_offset: usize,
-        end_container: Ref<'a>,
+        end_container: NodeRef<'a>,
         end_offset: usize,
     ) -> Result<Self, DomException> {
         // SPEC: 1. If init["startContainer"] or init["endContainer"] is a DocumentType or Attr node,
