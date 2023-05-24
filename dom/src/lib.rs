@@ -2,7 +2,7 @@ pub mod arena;
 pub mod dom_exception;
 pub mod element;
 pub mod node;
-mod ranges;
+pub mod ranges;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
 pub struct QualifiedName {
