@@ -1,3 +1,6 @@
+// FIXME: Remove when we actually use ranges
+#![allow(dead_code)]
+
 use crate::arena::Ref;
 use crate::dom_exception::DomException;
 use crate::node::Node;

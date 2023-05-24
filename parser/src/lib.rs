@@ -78,6 +78,7 @@ struct AdjustedInsertionLocation<'arena> {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
+#[allow(unused)]
 enum GenericParsingAlgorithm {
     RawText,
     RCData,
@@ -150,7 +151,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#push-onto-the-list-of-active-formatting-elements
-    fn push_onto_the_list_of_active_formatting_elements(&self, element: Ref<'arena>) {
+    fn push_onto_the_list_of_active_formatting_elements(&self, _element: Ref<'arena>) {
         // SPEC: 1. If there are already three elements in the list of active formatting elements after the last marker, if any,
         //          or anywhere in the list if there are no markers, that have the same tag name, namespace, and attributes as element,
         //          then remove the earliest such element from the list of active formatting elements.
@@ -1432,7 +1433,7 @@ impl<'arena> Parser<'arena> {
                 // SPEC: 2.1. Generate implied end tags, except for HTML elements with the same tag name as the token.
                 self.generate_implied_end_tags_except_for(&token_tag_name);
                 // SPEC: 2.2. If node is not the current node, then this is a parse error.
-                if Node::are_same(*node, self.current_node().unwrap()) {
+                if Node::are_same(node, self.current_node().unwrap()) {
                     log_parser_error!();
                 }
                 // SPEC: 2.3. Pop all the nodes from the current node up to node, including node,
@@ -1456,6 +1457,7 @@ impl<'arena> Parser<'arena> {
         }
     }
 
+    #[allow(unused_assignments)]
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#adoption-agency-algorithm
     fn run_the_adoption_agency_algorithm_for_token(&mut self, token: &Token) {
         // SPEC: 1. Let subject be token's tag name.
@@ -1497,7 +1499,7 @@ impl<'arena> Parser<'arena> {
                         .last_marker_index()
                         .unwrap_or(0),
                     self.list_of_active_formatting_elements.len(),
-                    &*subject,
+                    &subject,
                 );
             // SPEC: If there is no such element, then return and instead act as described in the "any other end tag" entry above.
             if formatting_element.is_none() {
@@ -1834,8 +1836,7 @@ impl<'arena> Parser<'arena> {
                     || name == "colgroup"
                     || name == "html"
                     || name == "td"
-                    || name == "th"
-                    || name == "body" =>
+                    || name == "th" =>
             {
                 // SPEC: Parse error. Ignore the token.
                 log_parser_error!();
@@ -1866,7 +1867,7 @@ impl<'arena> Parser<'arena> {
                 // SPEC: Clear the stack back to a table row context. (See below.)
                 self.clear_the_stack_back_to_a_table_row_context();
                 // SPEC: Insert an HTML element for the token, then switch the insertion mode to "in cell".
-                self.insert_html_element_for_token(&token);
+                self.insert_html_element_for_token(token);
                 // SPEC: Insert a marker at the end of the list of active formatting elements.
                 self.list_of_active_formatting_elements
                     .insert_marker_at_end();

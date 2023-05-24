@@ -39,6 +39,7 @@ impl<'arena> ListOfActiveFormattingElements<'arena> {
         }
     }
 
+    #[allow(unused)]
     pub fn number_of_elements_after_last_marker() -> usize {
         todo!()
     }
@@ -50,6 +51,7 @@ impl<'arena> ListOfActiveFormattingElements<'arena> {
             .position(|element| matches!(element, ActiveFormattingElement::Marker))
     }
 
+    #[allow(unused)]
     pub fn last_marker(&self) -> Option<ActiveFormattingElement<'arena>> {
         self.elements
             .iter()
@@ -86,11 +88,9 @@ impl<'arena> ListOfActiveFormattingElements<'arena> {
         if let Some(start) = self.index_from_position(start) {
             if let Some(end) = self.index_from_position(end) {
                 for i in start..end {
-                    if let Some(element) = self.elements.get(i) {
-                        if let ActiveFormattingElement::Element(element) = element {
-                            if element.is_element_with_one_of_tags(&[tag_name]) {
-                                return true;
-                            }
+                    if let Some(ActiveFormattingElement::Element(element)) = self.elements.get(i) {
+                        if element.is_element_with_one_of_tags(&[tag_name]) {
+                            return true;
                         }
                     }
                 }

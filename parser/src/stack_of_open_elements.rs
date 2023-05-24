@@ -85,7 +85,7 @@ impl<'arena> StackOfOpenElements<'arena> {
                 return Some(element);
             }
         }
-        return None;
+        None
     }
 
     pub fn contains(&self, element: Ref<'arena>) -> bool {
@@ -106,7 +106,7 @@ impl<'arena> StackOfOpenElements<'arena> {
             .iter()
             .rev()
             .enumerate()
-            .find(|(i, element)| element.element_tag_name() == Some(tag))
+            .find(|(_, element)| element.element_tag_name() == Some(tag))
             .map(|e| (e.0, *e.1))
     }
 
@@ -132,11 +132,6 @@ impl<'arena> StackOfOpenElements<'arena> {
         self.has_tag_name_in_scope(tag_name, BASE_SCOPE_ELEMENTS)
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-list-item-scope
-    pub fn has_element_with_tag_name_in_list_scope(&self, tag_name: &str) -> bool {
-        self.has_tag_name_in_scope(tag_name, &[BASE_SCOPE_ELEMENTS, &["ol", "ul"]].concat())
-    }
-
     // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-button-scope
     pub fn has_element_with_tag_name_in_button_scope(&self, tag_name: &str) -> bool {
         self.has_tag_name_in_scope(tag_name, &[BASE_SCOPE_ELEMENTS, &["button"]].concat())
@@ -145,10 +140,5 @@ impl<'arena> StackOfOpenElements<'arena> {
     // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-table-scope
     pub fn has_element_with_tag_name_in_table_scope(&self, tag_name: &str) -> bool {
         self.has_tag_name_in_scope(tag_name, &["html", "table", "template"])
-    }
-
-    // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-select-scope
-    pub fn has_element_with_tag_name_in_select_scope(&self, tag_name: &str) -> bool {
-        todo!()
     }
 }

@@ -58,23 +58,23 @@ impl<'arena> Node<'arena> {
         Node::are_same(a.root(), b.root())
     }
 
-    pub fn is_following(&'arena self, other: Ref<'arena>) -> bool {
+    pub fn is_following(&'arena self, _other: Ref<'arena>) -> bool {
         // SPEC: An object A is following an object B if A and B are
         //       in the same tree and A comes after B in tree order.
         todo!()
     }
 
-    pub fn is_preceding(&'arena self, other: Ref<'arena>) -> bool {
+    pub fn is_preceding(&'arena self, _other: Ref<'arena>) -> bool {
         // SPEC: An object A is following an object B if A and B are
         //       in the same tree and A comes after B in tree order.
         todo!()
     }
 
-    pub fn is_ancestor_of(&self, other: Ref<'arena>) -> bool {
+    pub fn is_ancestor_of(&self, _other: Ref<'arena>) -> bool {
         todo!()
     }
 
-    pub fn is_child_of(&self, other: Ref<'arena>) -> bool {
+    pub fn is_child_of(&self, _other: Ref<'arena>) -> bool {
         todo!()
     }
 
@@ -657,12 +657,10 @@ impl NodeData {
         match self {
             NodeData::Document => (Some("Document".to_string()), std_close),
             NodeData::Doctype { name, .. } => (Some(format!("<!DOCTYPE {name}>")), None),
-            NodeData::CharacterData { variant, data } => match variant {
-                CharacterDataVariant::Text { .. } => {
-                    (Some(format!("#text \"{}\"", data.borrow().trim())), None)
-                }
-                _ => (None, None),
-            },
+            NodeData::CharacterData {
+                variant: CharacterDataVariant::Text { .. },
+                data,
+            } => (Some(format!("#text \"{}\"", data.borrow().trim())), None),
             NodeData::Element { name, .. } => (Some(format!("<{}>", name.local)), std_close),
             _ => (None, None),
         }
