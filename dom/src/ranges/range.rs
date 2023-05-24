@@ -3,12 +3,12 @@ use crate::ranges::{AbstractRange, BoundaryPoint};
 
 // SPECLINK: https://dom.spec.whatwg.org/#interface-range
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
-struct LiveRange<'arena> {
+struct Range<'arena> {
     start: BoundaryPoint<'arena>,
     end: BoundaryPoint<'arena>,
 }
 
-impl<'arena> AbstractRange<'arena> for LiveRange<'arena> {
+impl<'arena> AbstractRange<'arena> for Range<'arena> {
     fn start(&self) -> &BoundaryPoint<'arena> {
         &self.start
     }
@@ -18,7 +18,7 @@ impl<'arena> AbstractRange<'arena> for LiveRange<'arena> {
     }
 }
 
-impl<'arena> LiveRange<'arena> {
+impl<'arena> Range<'arena> {
     // SPEC: FIXME{The new Range() constructor steps are to set this’s start and end to (current global object’s associated Document, 0).}
     pub fn new(document: Ref<'arena>) -> Self {
         Self {
