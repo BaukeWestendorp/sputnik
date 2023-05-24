@@ -1,9 +1,16 @@
 use std::cell::RefCell;
 
+use crate::list_of_active_formatting_elements::{
+    ActiveFormattingElement, ListOfActiveFormattingElements,
+};
+use crate::stack_of_open_elements::StackOfOpenElements;
 use dom::arena::{Arena, Ref};
-use dom::node::{Node, NodeData};
+use dom::node::{CharacterDataVariant, Node, NodeData};
 use dom::{Namespace, QualifiedName};
 use tokenizer::{Token, Tokenizer};
+
+mod list_of_active_formatting_elements;
+mod stack_of_open_elements;
 
 const fn is_parser_whitespace(string: char) -> bool {
     if let '\t' | '\u{000a}' | '\u{000c}' | '\u{000d}' | '\u{0020}' = string {
@@ -19,10 +26,15 @@ const SPECIAL_TAGS: &[&str] = &[
 
 macro_rules! log_parser_error {
     ($message:expr) => {
-        eprintln!("Parser Error on {}:{}: {}", file!(), line!(), $message);
+        eprintln!(
+            "\x1b[31m[Parser Error ({}:{})]: {}\x1b[0m",
+            file!(),
+            line!(),
+            $message
+        );
     };
     () => {
-        eprintln!("Parser Error on {}:{}", file!(), line!());
+        eprintln!("\x1b[31m[Parser Error ({}:{})]\x1b[0m", file!(), line!());
     };
 }
 
@@ -53,8 +65,18 @@ enum InsertionMode {
     AfterAfterBody,
     AfterAfterFrameset,
 }
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+enum InsertionLocation<'arena> {
+    BeforeElement(Ref<'arena>),
+    AfterLastChildIfAny,
+}
 
-#[allow(unused)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+struct AdjustedInsertionLocation<'arena> {
+    parent: Ref<'arena>,
+    child: InsertionLocation<'arena>,
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
 enum GenericParsingAlgorithm {
     RawText,
@@ -74,10 +96,10 @@ pub struct Parser<'arena> {
 
     insertion_mode: InsertionMode,
     original_insertion_mode: InsertionMode,
-    referenced_insertion_mode: Option<InsertionMode>,
     tokenizer: Tokenizer,
-    reprocess_current_token: bool,
-    open_elements: Vec<Ref<'arena>>,
+    pending_table_character_tokens: Vec<Token>,
+    stack_of_open_elements: StackOfOpenElements<'arena>,
+    list_of_active_formatting_elements: ListOfActiveFormattingElements<'arena>,
     head_element: Option<Ref<'arena>>,
     foster_parenting: bool,
     scripting_flag: bool,
@@ -91,10 +113,10 @@ impl<'arena> Parser<'arena> {
             document: arena.alloc(Node::new(None, NodeData::Document)),
             insertion_mode: InsertionMode::Initial,
             original_insertion_mode: InsertionMode::Initial,
-            referenced_insertion_mode: None,
             tokenizer: Tokenizer::new(input),
-            reprocess_current_token: false,
-            open_elements: Vec::new(),
+            pending_table_character_tokens: Vec::new(),
+            stack_of_open_elements: StackOfOpenElements::new(),
+            list_of_active_formatting_elements: ListOfActiveFormattingElements::new(),
             head_element: None,
             foster_parenting: false,
             scripting_flag: false,
@@ -106,80 +128,180 @@ impl<'arena> Parser<'arena> {
         self.arena.alloc(Node::new(Some(document), data))
     }
 
-    fn push_element_to_stack_of_open_elements(&mut self, element: Ref<'arena>) {
-        self.open_elements.push(element);
-    }
-
-    fn pop_current_element_off_stack_of_open_elements(&mut self) {
-        self.open_elements.pop();
-    }
-
-    fn pop_elements_from_stack_of_open_elements_until_element_has_been_popped(
-        &mut self,
-        tag_name: &str,
-    ) {
-        let mut current = self.current_node();
-        while let Some(NodeData::Element { name, .. }) = current.map(|c| &c.data) {
-            self.pop_current_element_off_stack_of_open_elements();
-            if name.local == tag_name {
-                return;
-            }
-            current = self.current_node();
-        }
-    }
-
-    fn remove_element_from_stack_of_open_elements(&mut self, element: Ref<'arena>) {
-        if let Some(index) = self.open_elements.iter().position(|e| e == &element) {
-            self.open_elements.remove(index);
-        }
-    }
-
-    fn stack_of_open_elements_contains_one_of(&self, names: &[&str]) -> bool {
-        self.open_elements.iter().any(|element| {
-            if let NodeData::Element { name, .. } = &element.data {
-                return names.contains(&name.local.as_str());
-            }
-            false
-        })
-    }
-
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#generate-implied-end-tags
     fn generate_implied_end_tags_except_for(&mut self, except_for: &str) {
         // SPEC: while the current node is a dd element, a dt element, an li element, an optgroup element,
         //       an option element, a p element, an rb element, an rp element, an rt element, or an rtc element,
         //       the UA must pop the current node off the stack of open elements.
         let mut current = self.current_node();
-        while let Some(NodeData::Element { name, .. }) = current.map(|c| &c.data) {
-            if name.local.as_str() == except_for {
+        while let Some(node) = current {
+            if node.element_tag_name() == Some(except_for) {
                 break;
             }
-            if [
+
+            if node.is_element_with_one_of_tags(&[
                 "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc",
-            ]
-            .contains(&name.local.as_str())
-            {
+            ]) {
                 return;
             }
-            self.pop_current_element_off_stack_of_open_elements();
+            self.stack_of_open_elements.pop_current_element();
             current = self.current_node();
         }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#push-onto-the-list-of-active-formatting-elements
+    fn push_onto_the_list_of_active_formatting_elements(&self, element: Ref<'arena>) {
+        // SPEC: 1. If there are already three elements in the list of active formatting elements after the last marker, if any,
+        //          or anywhere in the list if there are no markers, that have the same tag name, namespace, and attributes as element,
+        //          then remove the earliest such element from the list of active formatting elements.
+        //          For these purposes, the attributes must be compared as they were when the elements were created by the parser;
+        //          two elements have the same attributes if all their parsed attributes can be paired such that
+        //          the two attributes in each pair have identical names, namespaces, and values (the order of the attributes does not matter).
+        todo!()
     }
 
     fn switch_insertion_mode_to(&mut self, insertion_mode: InsertionMode) {
         self.insertion_mode = insertion_mode
     }
 
-    fn reprocess_token(&mut self) {
-        self.reprocess_current_token = true;
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#reset-the-insertion-mode-appropriately
+    fn reset_insertion_mode_appropriately(&mut self) {
+        // SPEC: 1. Let last be false.
+        let mut last = false;
+        // SPEC: 2. Let node be the last node in the stack of open elements.
+        let mut node = self.current_node().unwrap();
+        // SPEC: 3. Loop:
+        loop {
+            // If node is the first node in the stack of open elements, then set last to true,
+            // FIXME{and, if the parser was created as part of the HTML fragment parsing algorithm (fragment case), set node to the context element passed to that algorithm.}
+            if Node::are_same_optional(Some(node), self.stack_of_open_elements.first()) {
+                last = true;
+            }
+
+            // FIXME: Convert this to a match statement.
+
+            // SPEC: 4. If node is a select element, run these substeps:
+            if node.is_element_with_tag("select") {
+                // SPEC: 4.1 If last is true, jump to the step below labeled done.
+                if !last {
+                    // SPEC: 4.2 Let ancestor be node.
+                    let mut ancestor = node;
+                    // SPEC: 4.3 Loop: If ancestor is the first node in the stack of open elements, jump to the step below labeled done.
+                    while !Node::are_same_optional(
+                        Some(ancestor),
+                        self.stack_of_open_elements.first(),
+                    ) {
+                        // SPEC: 4.4 Let ancestor be the node before ancestor in the stack of open elements.
+                        ancestor = self
+                            .stack_of_open_elements
+                            .element_immediately_above(ancestor)
+                            .expect("element should exist, because, otherwise we would have broken out of this loop");
+                        // SPEC: 4.5 If ancestor is a template node, jump to the step below labeled done.
+                        if ancestor.is_element_with_tag("template") {
+                            break;
+                        }
+                        // SPEC: 4.6 If ancestor is a table node, switch the insertion mode to "in select in table" and return.
+                        if ancestor.is_element_with_tag("table") {
+                            self.switch_insertion_mode_to(InsertionMode::InSelectInTable);
+                            return;
+                        }
+                        // SPEC: 4.7 Jump back to the step labeled loop.
+                    }
+                }
+                // SPEC: 4.8 Done: Switch the insertion mode to "in select" and return.
+                self.switch_insertion_mode_to(InsertionMode::InSelect);
+            }
+            // SPEC: 5. If node is a td or th element and last is false, then switch the insertion mode to "in cell" and return.
+            if node.is_element_with_one_of_tags(&["td", "tr"]) && !last {
+                self.switch_insertion_mode_to(InsertionMode::InCell);
+                return;
+            }
+            // SPEC: 6. If node is a tr element, then switch the insertion mode to "in row" and return.
+            if node.is_element_with_tag("tr") {
+                self.switch_insertion_mode_to(InsertionMode::InRow);
+                return;
+            }
+            // SPEC: 7. If node is a tbody, thead, or tfoot element, then switch the insertion mode to "in table body" and return.
+            if node.is_element_with_one_of_tags(&["tbody", "thead", "tfoot"]) {
+                self.switch_insertion_mode_to(InsertionMode::InTableBody);
+                return;
+            }
+            // SPEC: 8. If node is a caption element, then switch the insertion mode to "in caption" and return.
+            if node.is_element_with_tag("caption") {
+                self.switch_insertion_mode_to(InsertionMode::InCaption);
+                return;
+            }
+            // SPEC: 9. If node is a colgroup element, then switch the insertion mode to "in column group" and return.
+            if node.is_element_with_tag("colgroup") {
+                self.switch_insertion_mode_to(InsertionMode::InColumnGroup);
+                return;
+            }
+            // SPEC: 10. If node is a table element, then switch the insertion mode to "in table" and return.
+            if node.is_element_with_tag("table") {
+                self.switch_insertion_mode_to(InsertionMode::InTable);
+                return;
+            }
+            // SPEC: 11. If node is a template element, then switch the insertion mode to the current template insertion mode and return.
+            if node.is_element_with_tag("template") {
+                todo!();
+            }
+            // SPEC: 12. If node is a head element and last is false, then switch the insertion mode to "in head" and return.
+            if node.is_element_with_tag("head") && !last {
+                self.switch_insertion_mode_to(InsertionMode::InHead);
+                return;
+            }
+            // SPEC: 13. If node is a body element, then switch the insertion mode to "in body" and return.
+            if node.is_element_with_tag("body") {
+                self.switch_insertion_mode_to(InsertionMode::InBody);
+                return;
+            }
+            // SPEC: 14. If node is a frameset element, then switch the insertion mode to "in frameset" and return. (fragment case)
+            if node.is_element_with_tag("frameset") {
+                self.switch_insertion_mode_to(InsertionMode::InFrameset);
+                return;
+            }
+            // SPEC: 15. If node is an html element, run these substeps:
+            if node.is_element_with_tag("html") {
+                // SPEC: 15.1 If the head element pointer is null,
+                if self.head_element.is_none() {
+                    // SPEC: switch the insertion mode to "before head" and return. (fragment case)
+                    self.switch_insertion_mode_to(InsertionMode::BeforeHead);
+                    return;
+                }
+                // SPEC: 15.2 Otherwise, the head element pointer is not null, switch the insertion mode to "after head" and return.
+                self.switch_insertion_mode_to(InsertionMode::AfterHead);
+            }
+            // SPEC: 16. If last is true, then switch the insertion mode to "in body" and return. (fragment case)
+            if last {
+                self.switch_insertion_mode_to(InsertionMode::InBody);
+                return;
+            }
+
+            // SPEC: 17. Let node now be the node before node in the stack of open elements.
+            node = self
+                .stack_of_open_elements
+                .element_immediately_above(node)
+                .unwrap();
+
+            // SPEC: 18. Return to the step labeled loop.
+        }
     }
 
-    fn process_token(&mut self, token: &Token) {
-        let mode = match self.referenced_insertion_mode {
-            Some(insertion_mode) => insertion_mode,
-            None => self.insertion_mode,
-        };
+    fn reprocess_token(&mut self, token: &mut Token) {
+        self.process_token_using_the_rules_for(self.insertion_mode, token);
+    }
 
-        match mode {
+    fn process_token_using_the_rules_for(
+        &mut self,
+        insertion_mode: InsertionMode,
+        token: &mut Token,
+    ) {
+        eprintln!(
+            "\x1b[32m[Parser::InsertionMode::{:?}] {:?}\x1b[0m",
+            insertion_mode, token
+        );
+
+        match insertion_mode {
             InsertionMode::Initial => self.handle_initial(token),
             InsertionMode::BeforeHtml => self.handle_before_html(token),
             InsertionMode::BeforeHead => self.handle_before_head(token),
@@ -188,12 +310,12 @@ impl<'arena> Parser<'arena> {
             InsertionMode::AfterHead => self.handle_after_head(token),
             InsertionMode::InBody => self.handle_in_body(token),
             InsertionMode::Text => self.handle_text(token),
-            InsertionMode::InTable => todo!("InsertionMode::InTable"),
-            InsertionMode::InTableText => todo!("InsertionMode::InTableText"),
+            InsertionMode::InTable => self.handle_in_table(token),
+            InsertionMode::InTableText => self.handle_in_table_text(token),
             InsertionMode::InCaption => todo!("InsertionMode::InCaption"),
             InsertionMode::InColumnGroup => todo!("InsertionMode::InColumnGroup"),
-            InsertionMode::InTableBody => todo!("InsertionMode::InTableBody"),
-            InsertionMode::InRow => todo!("InsertionMode::InRow"),
+            InsertionMode::InTableBody => self.handle_in_table_body(token),
+            InsertionMode::InRow => self.handle_in_row(token),
             InsertionMode::InCell => todo!("InsertionMode::InCell"),
             InsertionMode::InSelect => todo!("InsertionMode::InSelect"),
             InsertionMode::InSelectInTable => todo!("InsertionMode::InSelectInTable"),
@@ -206,14 +328,17 @@ impl<'arena> Parser<'arena> {
         }
     }
 
-    fn process_token_using_the_rules_for(&mut self, insertion_mode: InsertionMode) {
-        self.referenced_insertion_mode = Some(insertion_mode);
-    }
-
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#current-node
     fn current_node(&self) -> Option<Ref<'arena>> {
         // SPEC: The current node is the bottommost node in this stack of open elements.
-        self.open_elements.last().cloned()
+        self.stack_of_open_elements.current_node()
+    }
+
+    fn current_node_is_one_of_elements_with_tag(&self, elements: &[&str]) -> bool {
+        if let Some(current_node) = self.current_node() {
+            return current_node.is_element_with_one_of_tags(elements);
+        }
+        false
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#adjusted-current-node
@@ -226,30 +351,82 @@ impl<'arena> Parser<'arena> {
     fn appropriate_place_for_inserting_node(
         &self,
         override_target: Option<Ref<'arena>>,
-    ) -> (Option<Ref<'arena>>, Option<Ref<'arena>>) {
+    ) -> AdjustedInsertionLocation<'arena> {
         let target = match override_target {
             // SPEC: 1. If there was an override target specified, then let target be the override target.
-            Some(override_target) => Some(override_target),
+            Some(override_target) => override_target,
             // SPEC: Otherwise, let target be the current node.
-            None => self.current_node(),
+            None => self
+                .current_node()
+                .expect("There will always be an html element on the stack"),
         };
 
         // SPEC: 2. Determine the adjusted insertion location using the first matching steps from the following list:
-        let adjusted_insertion_location = if self.foster_parenting {
-            // SPEC: If foster parenting is enabled and target is a table, tbody, tfoot, thead, or tr element
-            todo!()
+        // SPEC:    -> If foster parenting is enabled and target is a table, tbody, tfoot, thead, or tr element
+        return if self.foster_parenting
+            && target.is_element_with_one_of_tags(&["table", "tbody", "tfoot", "thead", "tr"])
+        {
+            // SPEC: 2.1 Let last template be the last template element in the stack of open elements, if any.
+            let last_template = self.stack_of_open_elements.last_with_tag("template");
+            // SPEC: 2.2 Let last table be the last table element in the stack of open elements, if any.
+            let last_table = &self.stack_of_open_elements.last_with_tag("table");
+
+            // SPEC: 2.3 If there is a last template and
+            //           either there is no last table, or there is one, but last template is lower (more recently added) than last table in the stack of open elements,
+            if let Some(last_template) = last_template {
+                if last_table.is_none() || last_template.0 > last_table.unwrap().0 {
+                    // SPEC: then: let adjusted insertion location be inside last template's template contents, after its last child (if any), and abort these steps.
+                    return AdjustedInsertionLocation {
+                        parent: last_template.1,
+                        child: InsertionLocation::AfterLastChildIfAny,
+                    };
+                }
+            }
+
+            match last_table {
+                None => {
+                    // SPEC: 2.4 If there is no last table,
+                    //           then let adjusted insertion location be inside the first element in the stack of open elements (the html element),
+                    //           after its last child (if any),
+                    //           and abort these steps. (fragment case)
+                    AdjustedInsertionLocation {
+                        parent: self.stack_of_open_elements.first().unwrap(),
+                        child: InsertionLocation::AfterLastChildIfAny,
+                    }
+                }
+                Some(last_table) => {
+                    // SPEC: 2.5 If last table has a parent node, then let adjusted insertion location be inside last table's parent node, immediately before last table, and abort these steps.
+                    if let Some(parent) = last_table.1.parent() {
+                        return AdjustedInsertionLocation {
+                            parent,
+                            child: InsertionLocation::BeforeElement(last_table.1),
+                        };
+                    }
+
+                    // SPEC: 2.6 Let previous element be the element immediately above last table in the stack of open elements.
+                    let previous_element = self
+                        .stack_of_open_elements
+                        .element_immediately_above(last_table.1)
+                        .expect("There will always be an html element on the stack");
+
+                    // SPEC: 2.7 Let adjusted insertion location be inside previous element, after its last child (if any).
+                    AdjustedInsertionLocation {
+                        parent: previous_element,
+                        child: InsertionLocation::AfterLastChildIfAny,
+                    }
+                }
+            }
         } else {
-            // SPEC: Otherwise, let adjusted insertion location be inside target, after its last child (if any).
-            (target, None)
+            // SPEC: -> Otherwise, let adjusted insertion location be inside target, after its last child (if any).
+            AdjustedInsertionLocation {
+                parent: target,
+                child: InsertionLocation::AfterLastChildIfAny,
+            }
         };
 
         // SPEC: If the adjusted insertion location is inside a template element,
         //       let it instead be inside the template element's template contents, after its last child (if any).
         // FIXME: Implement
-
-        // SPEC: 4. Return the adjusted insertion location.
-        #[allow(clippy::let_and_return)]
-        adjusted_insertion_location
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-create-element
@@ -259,7 +436,7 @@ impl<'arena> Parser<'arena> {
         name: QualifiedName,
         attributes: Vec<dom::Attribute>,
     ) -> Ref<'arena> {
-        // FIXME: This does not implement any spec functionallity yet!
+        // FIXME: This does not implement any spec functionality yet!
 
         let element = self.new_node(
             document,
@@ -288,26 +465,23 @@ impl<'arena> Parser<'arena> {
     fn find_character_insertion_node(&self) -> Option<Ref<'arena>> {
         let adjusted_insertion_location = self.appropriate_place_for_inserting_node(None);
 
-        if adjusted_insertion_location.1.is_some() {
-            todo!()
-        }
-
-        if adjusted_insertion_location.0?.is_document() {
+        if adjusted_insertion_location.parent.is_document() {
             return None;
         }
 
-        if let Some(text_node) = adjusted_insertion_location.0?.last_child() {
+        if let Some(text_node) = adjusted_insertion_location.parent.last_child() {
             return Some(text_node);
         }
 
         let new_text_node = self.new_node(
             self.document,
-            NodeData::Text {
-                contents: RefCell::new(String::new()),
+            NodeData::CharacterData {
+                variant: CharacterDataVariant::Text,
+                data: RefCell::new(String::new()),
             },
         );
 
-        adjusted_insertion_location.0?.append(new_text_node);
+        adjusted_insertion_location.parent.append(new_text_node);
 
         Some(new_text_node)
     }
@@ -329,15 +503,17 @@ impl<'arena> Parser<'arena> {
             }
         }
         // SPEC: Pop elements from the stack of open elements until a p element has been popped from the stack.
-        self.pop_elements_from_stack_of_open_elements_until_element_has_been_popped("p");
+        self.stack_of_open_elements
+            .pop_elements_until_element_has_been_popped("p");
     }
 
     // SPECLINK: https://html.spec.whatwg.org/#insert-a-character
     fn insert_character(&mut self, data: char) {
-        if let Some(NodeData::Text { contents }) =
-            self.find_character_insertion_node().map(|node| &node.data)
+        if let Some(NodeData::CharacterData {
+            data: text_data, ..
+        }) = self.find_character_insertion_node().map(|node| &node.data)
         {
-            contents.borrow_mut().push(data);
+            text_data.borrow_mut().push(data);
         }
     }
 
@@ -359,37 +535,41 @@ impl<'arena> Parser<'arena> {
     ) -> Ref<'arena> {
         // SPEC: 1. Let the adjusted insertion location be the appropriate place for inserting a node.
         let adjusted_insertion_location = self.appropriate_place_for_inserting_node(None);
+        // eprintln!("{:#?}", adjusted_insertion_location);
 
         // SPEC: 2. Let element be the result of creating an element for the token in the given namespace,
         //          with the intended parent being the element in which the adjusted insertion location finds itself.
+        let element = self.create_element_for_token(token, adjusted_insertion_location.parent);
 
-        let element = self.create_element_for_token(token, adjusted_insertion_location.0.unwrap());
+        let child = match adjusted_insertion_location.child {
+            InsertionLocation::BeforeElement(element) => Some(element),
+            InsertionLocation::AfterLastChildIfAny => None,
+        };
 
         let pre_insertion_validity = adjusted_insertion_location
-            .0
-            .unwrap()
-            .ensure_pre_insertion_validity(element, adjusted_insertion_location.1);
+            .parent
+            .ensure_pre_insertion_validity(element, child);
 
         // SPEC: 3. If it is possible to insert element at the adjusted insertion location, then:
         if pre_insertion_validity.is_ok() {
             // SPEC: 3.1. If the parser was not created as part of the HTML fragment parsing algorithm,
             //            then push a new element queue onto element's relevant agent's custom element reactions stack.
-            // FIXME: Implement
 
             // SPEC: 3.2. Insert element at the adjusted insertion location.
             adjusted_insertion_location
-                .0
-                .unwrap()
-                .insert(element, adjusted_insertion_location.1);
+                .parent
+                .insert_before(element, child);
 
             // SPEC: 3.3. If the parser was not created as part of the HTML fragment parsing algorithm,
             //            then pop the element queue from element's relevant agent's custom element reactions stack,
             //            and invoke custom element reactions in that queue.
             // FIXME: Implement
+        } else {
+            eprintln!("FIXME: Throw {:?}", pre_insertion_validity);
         }
 
         // SPEC: 4. Push element onto the stack of open elements so that it is the new current node.
-        self.push_element_to_stack_of_open_elements(element);
+        self.stack_of_open_elements.push(element);
 
         // SPEC: 5. Return element.
         element
@@ -516,7 +696,7 @@ impl<'arena> Parser<'arena> {
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
-    fn handle_initial(&mut self, token: &Token) {
+    fn handle_initial(&mut self, token: &mut Token) {
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // SPEC: Ignore the token.
@@ -582,13 +762,13 @@ impl<'arena> Parser<'arena> {
                 // SPEC: In any case, switch the insertion mode to "before html",
                 //       then reprocess the token.
                 self.switch_insertion_mode_to(InsertionMode::BeforeHtml);
-                self.reprocess_token();
+                self.reprocess_token(token);
             }
         }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-before-html-insertion-mode
-    fn handle_before_html(&mut self, token: &Token) {
+    fn handle_before_html(&mut self, token: &mut Token) {
         match token {
             Token::Doctype { .. } => {
                 // SPEC: Parse error. Ignore the token.
@@ -607,7 +787,7 @@ impl<'arena> Parser<'arena> {
                 self.document.append(element);
 
                 // SPEC: Put this element in the stack of open elements.
-                self.push_element_to_stack_of_open_elements(element);
+                self.stack_of_open_elements.push(element);
 
                 // SPEC: Switch the insertion mode to "before head".
                 self.switch_insertion_mode_to(InsertionMode::BeforeHead);
@@ -632,34 +812,36 @@ impl<'arena> Parser<'arena> {
                 self.document.append(element);
 
                 // SPEC: Put this element in the stack of open elements.
-                self.push_element_to_stack_of_open_elements(element);
+                self.stack_of_open_elements.push(element);
 
                 // SPEC: Switch the insertion mode to "before head", then reprocess the token.
                 self.switch_insertion_mode_to(InsertionMode::BeforeHead);
-                self.reprocess_token();
+                self.reprocess_token(token);
             }
         }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-before-head-insertion-mode
-    fn handle_before_head(&mut self, token: &Token) {
-        let mut create_head = || {
-            // SPEC: Insert an HTML element for a "head" start tag token with no attributes.
-            let element = self.insert_html_element_for_token(&Token::StartTag {
-                name: String::from("head"),
-                self_closing: false,
-                self_closing_acknowledged: false,
-                attributes: Vec::new(),
-            });
-            // SPEC: Set the head element pointer to the newly created head element.
-            self.head_element = Some(element);
+    fn handle_before_head(&mut self, token: &mut Token) {
+        macro_rules! anything_else {
+            () => {
+                // SPEC: Insert an HTML element for a "head" start tag token with no attributes.
+                let element = self.insert_html_element_for_token(&Token::StartTag {
+                    name: String::from("head"),
+                    self_closing: false,
+                    self_closing_acknowledged: false,
+                    attributes: Vec::new(),
+                });
+                // SPEC: Set the head element pointer to the newly created head element.
+                self.head_element = Some(element);
 
-            // SPEC: Switch the insertion mode to "in head".
-            self.switch_insertion_mode_to(InsertionMode::InHead);
+                // SPEC: Switch the insertion mode to "in head".
+                self.switch_insertion_mode_to(InsertionMode::InHead);
 
-            // SPEC: Reprocess the current token.
-            self.reprocess_token();
-        };
+                // SPEC: Reprocess the current token.
+                self.reprocess_token(token);
+            };
+        }
 
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
@@ -680,18 +862,20 @@ impl<'arena> Parser<'arena> {
             }
             Token::EndTag { name, .. } if name == "head" || name == "body" || name == "br" => {
                 // SPEC: Act as described in the "anything else" entry below.
-                create_head()
+                anything_else!();
             }
             Token::EndTag { name, .. } => {
                 // SPEC: Parse error. Ignore the token.
                 log_parser_error!(format!("Invalid End Tag: {name}"));
             }
-            _ => create_head(),
+            _ => {
+                anything_else!();
+            }
         }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead
-    fn handle_in_head(&mut self, token: &Token) {
+    fn handle_in_head(&mut self, token: &mut Token) {
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // SPEC: Insert the character.
@@ -707,7 +891,7 @@ impl<'arena> Parser<'arena> {
             }
             Token::StartTag { name, .. } if name == "html" => {
                 // SPEC: Process the token using the rules for the "in body" insertion mode.
-                self.process_token_using_the_rules_for(InsertionMode::InBody)
+                self.process_token_using_the_rules_for(InsertionMode::InBody, token)
             }
             Token::StartTag { name, .. }
                 if name == "base" || name == "basefont" || name == "bgsound" || name == "link" =>
@@ -735,7 +919,7 @@ impl<'arena> Parser<'arena> {
             }
             Token::EndTag { name, .. } if name == "head" => {
                 // SPEC: Pop the current node (which will be the head element) off the stack of open elements.
-                self.pop_current_element_off_stack_of_open_elements();
+                self.stack_of_open_elements.pop_current_element();
 
                 // SPEC: Switch the insertion mode to "after head".
                 self.switch_insertion_mode_to(InsertionMode::AfterHead);
@@ -755,19 +939,19 @@ impl<'arena> Parser<'arena> {
             }
             _ => {
                 // SPEC: Pop the current node (which will be the head element) off the stack of open elements.
-                self.pop_current_element_off_stack_of_open_elements();
+                self.stack_of_open_elements.pop_current_element();
 
                 // SPEC: Switch the insertion mode to "after head".
                 self.switch_insertion_mode_to(InsertionMode::AfterHead);
 
                 // SPEC: Reprocess the token.
-                self.reprocess_token();
+                self.process_token_using_the_rules_for(self.insertion_mode, token);
             }
         }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-after-head-insertion-mode
-    fn handle_after_head(&mut self, token: &Token) {
+    fn handle_after_head(&mut self, token: &mut Token) {
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // SPEC: Insert the character.
@@ -783,7 +967,7 @@ impl<'arena> Parser<'arena> {
             }
             Token::StartTag { name, .. } if name == "html" => {
                 // SPEC: Process the token using the rules for the "in body" insertion mode.
-                self.process_token_using_the_rules_for(InsertionMode::InBody);
+                self.process_token_using_the_rules_for(InsertionMode::InBody, token);
             }
             Token::StartTag { name, .. } if name == "body" => {
                 // SPEC: Insert an HTML element for the token.
@@ -819,21 +1003,22 @@ impl<'arena> Parser<'arena> {
 
                 // SPEC: Push the node pointed to by the head element pointer onto the stack of open elements.
                 if let Some(head_element_pointer) = self.head_element {
-                    self.push_element_to_stack_of_open_elements(head_element_pointer);
+                    self.stack_of_open_elements.push(head_element_pointer);
                 }
 
                 // SPEC: Process the token using the rules for the "in head" insertion mode.
-                self.process_token_using_the_rules_for(InsertionMode::InHead);
+                self.process_token_using_the_rules_for(InsertionMode::InHead, token);
 
                 // SPEC: Remove the node pointed to by the head element pointer from the stack of open elements.
                 //       (It might not be the current node at this point.)
                 if let Some(head_element_pointer) = self.head_element {
-                    self.remove_element_from_stack_of_open_elements(head_element_pointer);
+                    self.stack_of_open_elements
+                        .remove_element(head_element_pointer);
                 }
             }
             Token::EndTag { name, .. } if name == "template" => {
                 // SPEC: Process the token using the rules for the "in head" insertion mode.
-                self.process_token_using_the_rules_for(InsertionMode::InHead);
+                self.process_token_using_the_rules_for(InsertionMode::InHead, token);
             }
             Token::EndTag { name, .. } if name == "body" || name == "html" || name == "br" => {
                 // SPEC: Act as described in the "anything else" entry below.
@@ -858,13 +1043,27 @@ impl<'arena> Parser<'arena> {
                 self.switch_insertion_mode_to(InsertionMode::InBody);
 
                 // SPEC: Reprocess the current token.
-                self.reprocess_token();
+                // SPEC: Insert an HTML element for a "head" start tag token with no attributes.
+                let element = self.insert_html_element_for_token(&Token::StartTag {
+                    name: String::from("head"),
+                    self_closing: false,
+                    self_closing_acknowledged: false,
+                    attributes: Vec::new(),
+                });
+                // SPEC: Set the head element pointer to the newly created head element.
+                self.head_element = Some(element);
+
+                // SPEC: Switch the insertion mode to "in head".
+                self.switch_insertion_mode_to(InsertionMode::InHead);
+
+                // SPEC: Reprocess the current token.
+                self.process_token_using_the_rules_for(self.insertion_mode, token);
             }
         }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody
-    fn handle_in_body(&mut self, token: &Token) {
+    fn handle_in_body(&mut self, token: &mut Token) {
         match token {
             Token::Character { data } if data == &'\u{0000}' => {
                 // SPEC: Parse error. Ignore the token.
@@ -894,8 +1093,21 @@ impl<'arena> Parser<'arena> {
                 log_parser_error!();
             }
             Token::StartTag { name, .. } if name == "html" => todo!(),
-            // FIXME: A start tag whose tag name is one of: "base", "basefont", "bgsound", "link", "meta", "noframes", "script", "style", "template", "title"
-            //        An end tag whose tag name is "template"
+            Token::StartTag { name, .. }
+                if name == "base"
+                    || name == "basefont"
+                    || name == "bgsound"
+                    || name == "link"
+                    || name == "meta"
+                    || name == "noframes"
+                    || name == "script"
+                    || name == "style"
+                    || name == "template"
+                    || name == "title" =>
+            {
+                todo!()
+            }
+            Token::EndTag { name, .. } if name == "template" => todo!(),
             Token::StartTag { name, .. } if name == "body" => todo!(),
             Token::StartTag { name, .. } if name == "frameset" => todo!(),
             Token::EndOfFile => {
@@ -905,7 +1117,10 @@ impl<'arena> Parser<'arena> {
                 // Otherwise, follow these steps:
 
                 // If there is a node in the stack of open elements that is not either a dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element, an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element, a thead element, a tr element, the body element, or the html element, then this is a parse error.
-                if !self.stack_of_open_elements_contains_one_of(SPECIAL_TAGS) {
+                if !self
+                    .stack_of_open_elements
+                    .contains_one_of_tags(SPECIAL_TAGS)
+                {
                     log_parser_error!();
                 };
 
@@ -914,7 +1129,10 @@ impl<'arena> Parser<'arena> {
             }
             Token::EndTag { name, .. } if name == "body" => {
                 // SPEC: If the stack of open elements does not have a body element in scope, this is a parse error; ignore the token.
-                if !self.stack_of_open_elements_contains_one_of(&["body"]) {
+                if !self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_scope("body")
+                {
                     log_parser_error!();
                     return;
                 }
@@ -923,7 +1141,10 @@ impl<'arena> Parser<'arena> {
                 //       dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element,
                 //       an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element,
                 //       a thead element, a tr element, the body element, or the html element, then this is a parse error.
-                if !self.stack_of_open_elements_contains_one_of(SPECIAL_TAGS) {
+                if !self
+                    .stack_of_open_elements
+                    .contains_one_of_tags(SPECIAL_TAGS)
+                {
                     log_parser_error!();
                 }
 
@@ -933,7 +1154,10 @@ impl<'arena> Parser<'arena> {
             Token::EndTag { name, .. } if name == "html" => {
                 // SPEC: 1. If the stack of open elements does not have a body element in scope,
                 //          this is a parse error; ignore the token.
-                if !self.stack_of_open_elements_contains_one_of(&["body"]) {
+                if !self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_scope("body")
+                {
                     log_parser_error!();
                     return;
                 }
@@ -942,7 +1166,7 @@ impl<'arena> Parser<'arena> {
                 // SPEC: 3. Switch the insertion mode to "after body".
                 self.switch_insertion_mode_to(InsertionMode::AfterBody);
                 // SPEC: 4. Reprocess the token.
-                self.reprocess_token();
+                self.reprocess_token(token);
             }
             Token::StartTag { name, .. }
                 if name == "address"
@@ -972,16 +1196,70 @@ impl<'arena> Parser<'arena> {
                     || name == "ul" =>
             {
                 // SPEC: If the stack of open elements has a p element in button scope, then close a p element.
-                if self.stack_of_open_elements_contains_one_of(&["p"]) {
+                if self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_button_scope("p")
+                {
                     self.close_a_p_element();
                 }
                 // SPEC: Insert an HTML element for the token.
                 self.insert_html_element_for_token(token);
             }
+            Token::StartTag { name, .. }
+                if name == "h1"
+                    || name == "h2"
+                    || name == "h3"
+                    || name == "h4"
+                    || name == "h5"
+                    || name == "h6" =>
+            {
+                todo!()
+            }
+            Token::StartTag { name, .. } if name == "pre" || name == "listing" => todo!(),
+            Token::StartTag { name, .. } if name == "form" => todo!(),
+            Token::StartTag { name, .. } if name == "li" => todo!(),
+            Token::StartTag { name, .. } if name == "dd" || name == "dt" => todo!(),
+            Token::StartTag { name, .. } if name == "plaintext" => todo!(),
+            Token::StartTag { name, .. } if name == "button" => todo!(),
+            Token::EndTag { name, .. }
+                if name == "address"
+                    || name == "article"
+                    || name == "aside"
+                    || name == "blockquote"
+                    || name == "button"
+                    || name == "center"
+                    || name == "details"
+                    || name == "dialog"
+                    || name == "dir"
+                    || name == "div"
+                    || name == "dl"
+                    || name == "fieldset"
+                    || name == "figcaption"
+                    || name == "figure"
+                    || name == "footer"
+                    || name == "header"
+                    || name == "hgroup"
+                    || name == "listing"
+                    || name == "main"
+                    || name == "menu"
+                    || name == "nav"
+                    || name == "ol"
+                    || name == "pre"
+                    || name == "search"
+                    || name == "section"
+                    || name == "summary"
+                    || name == "ul" =>
+            {
+                todo!()
+            }
+            Token::EndTag { name, .. } if name == "form" => todo!(),
             Token::EndTag { name, .. } if name == "p" => {
                 // SPEC: If the stack of open elements does not have a p element in button scope, then this is a parse error;
                 //       insert an HTML element for a "p" start tag token with no attributes.
-                if !self.stack_of_open_elements_contains_one_of(&["p"]) {
+                if !self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_button_scope("p")
+                {
                     log_parser_error!();
                     self.insert_html_element_for_token(&Token::StartTag {
                         name: String::from("p"),
@@ -994,12 +1272,278 @@ impl<'arena> Parser<'arena> {
                 // SPEC: Close a p element.
                 self.close_a_p_element();
             }
-            _ => todo!("{token:?}"),
+            Token::EndTag { name, .. } if name == "li" => {
+                todo!()
+            }
+            Token::EndTag { name, .. } if name == "dd" || name == "dt" => {
+                todo!()
+            }
+            Token::EndTag { name, .. }
+                if name == "h1"
+                    || name == "h2"
+                    || name == "h3"
+                    || name == "h4"
+                    || name == "h5"
+                    || name == "h6" =>
+            {
+                todo!()
+            }
+            Token::EndTag { name, .. } if name == "sarcasm" => todo!(),
+            Token::StartTag { name, .. } if name == "a" => {
+                use list_of_active_formatting_elements::Position;
+
+                // SPEC: If the list of active formatting elements contains an a element between
+                //       the end of the list and the last marker on the list (or the start of the list if there is no marker on the list),
+                //       then this is a parse error;
+                //       run the adoption agency algorithm for the token,
+                //       then remove that element from the list of active formatting elements and the stack of open elements
+                //       if the adoption agency algorithm didn't already remove it (it might not have if the element is not in table scope).
+                if self
+                    .list_of_active_formatting_elements
+                    .contains_element_between(Position::End, Position::LastMarkerOrElseStart, "a")
+                {
+                    log_parser_error!();
+                    todo!()
+                }
+            }
+            Token::StartTag { name, .. }
+                if name == "b"
+                    || name == "big"
+                    || name == "code"
+                    || name == "em"
+                    || name == "font"
+                    || name == "i"
+                    || name == "s"
+                    || name == "small"
+                    || name == "strike"
+                    || name == "strong"
+                    || name == "tt"
+                    || name == "u" =>
+            {
+                // SPEC: Reconstruct the active formatting elements, if any.
+                self.reconstruct_active_formatting_elements_if_any();
+                // SPEC: Insert an HTML element for the token.
+                let element = self.insert_html_element_for_token(token);
+                // SPEC: Push onto the list of active formatting elements that element.
+                self.push_onto_the_list_of_active_formatting_elements(element);
+            }
+            Token::StartTag { name, .. } if name == "nobr" => todo!(),
+            Token::EndTag { name, .. }
+                if name == "a"
+                    || name == "b"
+                    || name == "big"
+                    || name == "code"
+                    || name == "em"
+                    || name == "font"
+                    || name == "i"
+                    || name == "nobr"
+                    || name == "s"
+                    || name == "small"
+                    || name == "strike"
+                    || name == "strong"
+                    || name == "tt"
+                    || name == "u" =>
+            {
+                self.run_the_adoption_agency_algorithm_for_token(token);
+            }
+
+            Token::StartTag { name, .. }
+                if name == "applet" || name == "marquee" || name == "object" =>
+            {
+                todo!()
+            }
+            Token::EndTag { name, .. }
+                if name == "applet" || name == "marquee" || name == "object" =>
+            {
+                todo!()
+            }
+            Token::StartTag { name, .. } if name == "table" => {
+                // SPEC: If the Document is not set to quirks mode, and the stack of open elements has a p element in button scope, then close a p element.
+                // FIXME: Implement
+                // SPEC: Insert an HTML element for the token.
+                self.insert_html_element_for_token(token);
+                // SPEC: Set the frameset-ok flag to "not ok".
+                self.frameset_ok = FramesetState::NotOk;
+                // SPEC: Switch the insertion mode to "in table".
+                self.switch_insertion_mode_to(InsertionMode::InTable);
+            }
+            Token::EndTag { name, .. } if name == "br" => todo!(),
+            Token::StartTag { name, .. }
+                if name == "area"
+                    || name == "br"
+                    || name == "embed"
+                    || name == "img"
+                    || name == "keygen"
+                    || name == "wbr" =>
+            {
+                // SPEC: Reconstruct the active formatting elements, if any.
+                self.reconstruct_active_formatting_elements_if_any();
+                // SPEC: Insert an HTML element for the token.
+                self.insert_html_element_for_token(token);
+                // SPEC: Immediately pop the current node off the stack of open elements.
+                self.stack_of_open_elements.pop_current_element();
+                // SPEC: Acknowledge the token's self-closing flag, if it is set.
+                token.acknowledge_self_closing_flag_if_set();
+                // SPEC: Set the frameset-ok flag to "not ok".
+                self.frameset_ok = FramesetState::NotOk;
+            }
+            Token::StartTag { name, .. } if name == "input" => todo!(),
+            Token::StartTag { name, .. }
+                if name == "param" || name == "source" || name == "track" =>
+            {
+                todo!()
+            }
+            Token::StartTag { name, .. } if name == "hr" => todo!(),
+            Token::StartTag { name, .. } if name == "image" => todo!(),
+            Token::StartTag { name, .. } if name == "textarea" => todo!(),
+            Token::StartTag { name, .. } if name == "xmp" => todo!(),
+            Token::StartTag { name, .. } if name == "iframe" => todo!(),
+            Token::StartTag { name, .. } if name == "noembed" => todo!(),
+            Token::StartTag { name, .. } if name == "noscript" && self.scripting_flag => todo!(),
+            Token::StartTag { name, .. } if name == "select" => todo!(),
+            Token::StartTag { name, .. } if name == "optgroup" || name == "option" => todo!(),
+            Token::StartTag { name, .. } if name == "rb" || name == "rtc" => todo!(),
+            Token::StartTag { name, .. } if name == "rp" || name == "rt" => todo!(),
+            Token::StartTag { name, .. } if name == "math" => todo!(),
+            Token::StartTag { name, .. } if name == "svg" => todo!(),
+            Token::StartTag { name, .. }
+                if name == "caption"
+                    || name == "col"
+                    || name == "colgroup"
+                    || name == "frame"
+                    || name == "head"
+                    || name == "tbody"
+                    || name == "td"
+                    || name == "tfoot"
+                    || name == "th"
+                    || name == "thead"
+                    || name == "tr" =>
+            {
+                // SPEC: Parser error. Ignore the token.
+                log_parser_error!();
+            }
+            Token::StartTag { .. } => {
+                // SPEC: Reconstruct the active formatting elements, if any.
+                self.reconstruct_active_formatting_elements_if_any();
+                // SPEC: Insert an HTML element for the token.
+                self.insert_html_element_for_token(token);
+            }
+            Token::EndTag { .. } => self.in_body_any_other_end_tag(token),
+        }
+    }
+
+    fn in_body_any_other_end_tag(&mut self, token: &Token) {
+        // SPEC: 1. Initialize node to be the current node (the bottommost node of the stack).
+        for node in self.stack_of_open_elements.elements.clone().iter().rev() {
+            // SPEC: 2. Loop: If node is an HTML element with the same tag name as the token, then:
+            let token_tag_name = token.tag_name().expect("token should be EndTag");
+            if node.is_element_with_tag(&token_tag_name) {
+                // SPEC: 2.1. Generate implied end tags, except for HTML elements with the same tag name as the token.
+                self.generate_implied_end_tags_except_for(&token_tag_name);
+                // SPEC: 2.2. If node is not the current node, then this is a parse error.
+                if Node::are_same(*node, self.current_node().unwrap()) {
+                    log_parser_error!();
+                }
+                // SPEC: 2.3. Pop all the nodes from the current node up to node, including node,
+                while Node::are_same(node, self.current_node().unwrap()) {
+                    self.stack_of_open_elements.pop_current_element();
+                }
+                // SPEC: then stop these steps.
+                break;
+            } else {
+                // SPEC: 3. Otherwise, if node is in the special category,
+                if node.is_special_tag() {
+                    // SPEC: then this is a parse error; ignore the token,
+                    log_parser_error!();
+                    // SPEC: and return.
+                    return;
+                }
+
+                // SPEC: 4. Set node to the previous entry in the stack of open elements.
+                // SPEC: 5 Return to the step labeled loop.
+            }
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#adoption-agency-algorithm
+    fn run_the_adoption_agency_algorithm_for_token(&mut self, token: &Token) {
+        // SPEC: 1. Let subject be token's tag name.
+        let subject = token.tag_name().expect("token should be EndTag");
+
+        // SPEC: 2. If the current node is an HTML element whose tag name is subject,
+        //          and the current node is not in the list of active formatting elements,
+        //          then pop the current node off the stack of open elements and return.
+        if self.current_node_is_one_of_elements_with_tag(&[&subject])
+            && self
+                .list_of_active_formatting_elements
+                .contains(ActiveFormattingElement::Element(
+                    self.current_node().unwrap(),
+                ))
+        {
+            self.stack_of_open_elements.pop_current_element();
+            return;
+        }
+
+        // SPEC: 3. Let outer loop counter be 0.
+        let mut outer_loop_counter = 0;
+
+        // SPEC: 4. While true:
+        loop {
+            // SPEC: 4.1 If outer loop counter is greater than or equal to 8, then return.
+            if outer_loop_counter >= 8 {
+                return;
+            }
+
+            // SPEC: 4.2 Increment outer loop counter by 1.
+            outer_loop_counter += 1;
+            // SPEC: 4.3 Let formatting element be the last element in the list of active formatting elements that:
+            //     * is between the end of the list and the last marker in the list, if any, or the start of the list otherwise, and
+            //     * has the tag name subject.
+            let formatting_element = self
+                .list_of_active_formatting_elements
+                .last_element_that_is_between_index_and_has_tag_name(
+                    self.list_of_active_formatting_elements
+                        .last_marker_index()
+                        .unwrap_or(0),
+                    self.list_of_active_formatting_elements.len(),
+                    &*subject,
+                );
+            // SPEC: If there is no such element, then return and instead act as described in the "any other end tag" entry above.
+            if formatting_element.is_none() {
+                self.in_body_any_other_end_tag(token);
+                return;
+            }
+            let formatting_element = match formatting_element.unwrap() {
+                ActiveFormattingElement::Marker => panic!("Should not be a marker!"),
+                ActiveFormattingElement::Element(element) => element,
+            };
+
+            // SPEC: 4.4 If formatting element is not in the stack of open elements,
+            if self.stack_of_open_elements.contains(formatting_element) {
+                // SPEC: then this is a parse error;
+                log_parser_error!();
+                // SPEC: remove the element from the list
+                self.list_of_active_formatting_elements
+                    .remove(formatting_element);
+                // SPEC: and return.
+                return;
+            }
+
+            todo!()
+            // SPEC: 4.5 If formatting element is in the stack of open elements, but the element is not in scope, then this is a parse error; return.
+            // SPEC: 4.6 If formatting element is not the current node, this is a parse error. (But do not return.)
+            // SPEC: 4.7 Let furthest block be the topmost node in the stack of open elements that is lower in the stack than formatting element, and is an element in the special category. There might not be one.
+            // SPEC: 4.8 If there is no furthest block, then the UA must first pop all the nodes from the bottom of the stack of open elements, from the current node up to and including formatting element, then remove formatting element from the list of active formatting elements, and finally return.
+            // SPEC: 4.9 Let common ancestor be the element immediately above formatting element in the stack of open elements.
+            // SPEC: 4.10 Let a bookmark note the position of formatting element in the list of active formatting elements relative to the elements on either side of it in the list.
+            // SPEC: 4.11 Let node and last node be furthest block.
+            // SPEC: 4.12 Let inner loop counter be 0.
+            // SPEC: 4.13 While true:
         }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-incdata
-    fn handle_text(&mut self, token: &Token) {
+    fn handle_text(&mut self, token: &mut Token) {
         match token {
             Token::Character { data } => {
                 // SPEC: Insert the token's character.
@@ -1013,16 +1557,16 @@ impl<'arena> Parser<'arena> {
                 // FIXME: Implement
 
                 // SPEC: Pop the current node off the stack of open elements.
-                self.pop_current_element_off_stack_of_open_elements();
+                self.stack_of_open_elements.pop_current_element();
 
                 // SPEC: Switch the insertion mode to the original insertion mode and reprocess the token.
                 self.switch_insertion_mode_to(self.original_insertion_mode);
-                self.reprocess_token();
+                self.reprocess_token(token);
             }
             Token::EndTag { name, .. } if name == "script" => todo!(),
             _ => {
                 // SPEC: Pop the current node off the stack of open elements.
-                self.pop_current_element_off_stack_of_open_elements();
+                self.stack_of_open_elements.pop_current_element();
 
                 // SPEC: Switch the insertion mode to the original insertion mode.
                 self.switch_insertion_mode_to(self.original_insertion_mode);
@@ -1030,12 +1574,390 @@ impl<'arena> Parser<'arena> {
         }
     }
 
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-intable
+    fn handle_in_table(&mut self, token: &mut Token) {
+        match token {
+            Token::Character { .. }
+                if self.current_node_is_one_of_elements_with_tag(&[
+                    "table", "tbody", "template", "tfoot", "thead", "tr",
+                ]) =>
+            {
+                // SPEC: Let the pending table character tokens be an empty list of tokens.
+                self.pending_table_character_tokens = Vec::new();
+                // SPEC: Let the original insertion mode be the current insertion mode.
+                self.original_insertion_mode = self.insertion_mode;
+                // SPEC: Switch the insertion mode to "in table text" and reprocess the token.
+                self.switch_insertion_mode_to(InsertionMode::InTableText);
+                self.reprocess_token(token);
+            }
+            Token::Comment { .. } => todo!(),
+            Token::Doctype { .. } => todo!(),
+            Token::StartTag { name, .. } if name == "caption" => todo!(),
+            Token::StartTag { name, .. } if name == "colgroup" => todo!(),
+            Token::StartTag { name, .. } if name == "col" => todo!(),
+            Token::StartTag { name, .. }
+                if name == "tbody" || name == "tfoot" || name == "thead" =>
+            {
+                // SPEC: Clear the stack back to a table context. (See below.)
+                self.clear_the_stack_back_to_a_table_context();
+                // SPEC: Insert an HTML element for the token,
+                self.insert_html_element_for_token(token);
+                // SPEC: then switch the insertion mode to "in table body".
+                self.switch_insertion_mode_to(InsertionMode::InTableBody);
+            }
+            Token::StartTag { name, .. } if name == "td" || name == "th" || name == "tr" => {
+                // SPEC: Clear the stack back to a table context. (See below.)
+                self.clear_the_stack_back_to_a_table_context();
+                // SPEC: Insert an HTML element for a "tbody" start tag token with no attributes,
+                self.insert_html_element_for_token(&Token::StartTag {
+                    name: "tbody".to_string(),
+                    self_closing: false,
+                    self_closing_acknowledged: false,
+                    attributes: Vec::new(),
+                });
+                // SPEC: then switch the insertion mode to "in table body".
+                self.switch_insertion_mode_to(InsertionMode::InTableBody);
+                // SPEC: Reprocess the current token.
+                self.reprocess_token(token);
+            }
+            Token::StartTag { name, .. } if name == "table" => {
+                // SPEC: Parse error.
+                log_parser_error!("Invalid token: table in table");
+                // SPEC: If the stack of open elements does not have a table element in table scope,
+                if !self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_table_scope("table")
+                {
+                    // SPEC: ignore the token.
+                    return;
+                }
+                // SPEC: Otherwise:
+                // SPEC: Pop elements from this stack until a table element has been popped from the stack.
+                self.stack_of_open_elements
+                    .pop_elements_until_element_has_been_popped("table");
+                // SPEC: Reset the insertion mode appropriately.
+                self.reset_insertion_mode_appropriately();
+                // SPEC: Reprocess the token.
+                self.reprocess_token(token);
+            }
+            Token::EndTag { name, .. } if name == "table" => {
+                // SPEC: If the stack of open elements does not have a table element in table scope,
+                if !self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_table_scope("table")
+                {
+                    // SPEC: this is a parse error; ignore the token.
+                    log_parser_error!();
+                    return;
+                }
+
+                // SPEC: Otherwise:
+                // SPEC: Pop elements from this stack until a table element has been popped from the stack.
+                self.stack_of_open_elements
+                    .pop_elements_until_element_has_been_popped("table");
+                // SPEC: Reset the insertion mode appropriately.
+                self.reset_insertion_mode_appropriately();
+            }
+            Token::EndTag { name, .. }
+                if name == "body"
+                    || name == "caption"
+                    || name == "col"
+                    || name == "colgroup"
+                    || name == "html"
+                    || name == "tbody"
+                    || name == "td"
+                    || name == "tfoot"
+                    || name == "th"
+                    || name == "thead"
+                    || name == "tr" =>
+            {
+                // SPEC: Parse error. Ignore the token.
+                log_parser_error!();
+            }
+            Token::StartTag { name, .. }
+                if name == "style" || name == "script" || name == "template" =>
+            {
+                todo!()
+            }
+            Token::EndTag { name, .. } if name == "template" => todo!(),
+            Token::StartTag { name, .. } if name == "input" => todo!(),
+            Token::StartTag { name, .. } if name == "form" => todo!(),
+            Token::EndOfFile => {
+                // SPEC: Process the token using the rules for the "in body" insertion mode.
+                self.process_token_using_the_rules_for(InsertionMode::InBody, token);
+            }
+            _ => self.in_table_anything_else(token),
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/#clear-the-stack-back-to-a-table-context
+    fn clear_the_stack_back_to_a_table_context(&mut self) {
+        // SPEC: When the steps above require the UA to clear the stack back to a table context,
+        //       it means that the UA must, while the current node is not a table, template, or html element,
+        //       pop elements from the stack of open elements.
+        while !self.current_node_is_one_of_elements_with_tag(&["table", "template", "html"]) {
+            self.stack_of_open_elements.pop_current_element()
+        }
+    }
+
+    fn in_table_anything_else(&mut self, token: &mut Token) {
+        // SPEC: Parse error.
+        log_parser_error!(
+            "Invalid element in table. Attempting recovery using foster parenting..."
+        );
+        // SPEC: Enable foster parenting,
+        self.foster_parenting = true;
+        // SPEC: process the token using the rules for the "in body" insertion mode,
+        self.process_token_using_the_rules_for(InsertionMode::InBody, token);
+        // SPEC: and then disable foster parenting.
+        self.foster_parenting = false;
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-intabletext
+    fn handle_in_table_text(&mut self, token: &mut Token) {
+        match token {
+            Token::Character { data } if data == &'\u{0000}' => {
+                // SPEC: Parse error. Ignore the token.
+                log_parser_error!();
+            }
+            Token::Character { data } => {
+                self.pending_table_character_tokens
+                    .push(Token::Character { data: *data });
+            }
+            _ => {
+                // SPEC: If any of the tokens in the pending table character tokens list are character tokens that are not ASCII whitespace,
+                let all_are_whitespace = self.pending_table_character_tokens.iter().all(|c| {
+                    if let Token::Character { data } = c {
+                        return data.is_ascii_whitespace();
+                    }
+                    false
+                });
+                if !all_are_whitespace {
+                    // SPEC: then this is a parse error:
+                    log_parser_error!("Not all pending table character tokens are whitespace");
+                    // SPEC: reprocess the character tokens in the pending table character tokens list
+                    //       using the rules given in the "anything else" entry in the "in table" insertion mode.
+                    for character_token in self.pending_table_character_tokens.clone().iter_mut() {
+                        self.in_table_anything_else(character_token)
+                    }
+                }
+
+                // SPEC: Otherwise, insert the characters given by the pending table character tokens list.
+                for pending in self.pending_table_character_tokens.clone().iter() {
+                    if let Token::Character { data } = pending {
+                        self.insert_character(*data);
+                    }
+                }
+
+                // SPEC: Switch the insertion mode to the original insertion mode and reprocess the token.
+                self.switch_insertion_mode_to(self.original_insertion_mode);
+                self.reprocess_token(token);
+            }
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/#parsing-main-intbody
+    fn handle_in_table_body(&mut self, token: &mut Token) {
+        macro_rules! start_tags_and_end_tag {
+            () => {
+                // SPEC: If the stack of open elements does not have a tbody, thead, or tfoot element in table scope,
+                if self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_table_scope("tbody")
+                    || self
+                        .stack_of_open_elements
+                        .has_element_with_tag_name_in_table_scope("thead")
+                    || self
+                        .stack_of_open_elements
+                        .has_element_with_tag_name_in_table_scope("tfoot")
+                {
+                    // SPEC: this is a parse error; ignore the token.
+                    log_parser_error!();
+                }
+                // SPEC: Otherwise:
+                // SPEC: Clear the stack back to a table body context. (See below.)
+                self.clear_the_stack_back_to_a_table_body_context();
+                // SPEC: Pop the current node from the stack of open elements.
+                self.stack_of_open_elements.pop_current_element();
+                // SPEC: Switch the insertion mode to "in table".
+                self.switch_insertion_mode_to(InsertionMode::InTable);
+                // SPEC: Reprocess the token.
+                self.reprocess_token(token);
+            };
+        }
+
+        match token {
+            Token::StartTag { name, .. } if name == "tr" => {
+                // SPEC: Clear the stack back to a table body context. (See below.)
+                self.clear_the_stack_back_to_a_table_body_context();
+                // SPEC: Insert an HTML element for the token,
+                self.insert_html_element_for_token(token);
+                // SPEC: then switch the insertion mode to "in row".
+                self.switch_insertion_mode_to(InsertionMode::InRow);
+            }
+            Token::StartTag { name, .. } if name == "th" || name == "td" => {
+                // SPEC: Parse error.
+                log_parser_error!();
+                // SPEC: Clear the stack back to a table body context. (See below.)
+                self.clear_the_stack_back_to_a_table_body_context();
+                // SPEC: Insert an HTML element for a "tr" start tag token with no attributes,
+                self.insert_html_element_for_token(&Token::StartTag {
+                    name: "tr".to_string(),
+                    self_closing: false,
+                    self_closing_acknowledged: false,
+                    attributes: vec![],
+                });
+                // SPEC: then switch the insertion mode to "in row".
+                self.switch_insertion_mode_to(InsertionMode::InRow);
+                // SPEC: Reprocess the current token.
+                self.reprocess_token(token);
+            }
+            Token::EndTag { name, .. } if name == "tbody" || name == "tfoot" || name == "thead" => {
+                // SPEC: If the stack of open elements does not have an element in table scope that
+                //       is an HTML element with the same tag name as the token,
+                if let Some(token_tag_name) = token.tag_name() {
+                    if self
+                        .stack_of_open_elements
+                        .has_element_with_tag_name_in_table_scope(&token_tag_name)
+                    {
+                        // SPEC: this is a parse error; ignore the token.
+                        log_parser_error!();
+                        return;
+                    }
+                }
+                // SPEC: Otherwise:
+                // SPEC: Clear the stack back to a table body context. (See below.)
+                self.clear_the_stack_back_to_a_table_body_context();
+                // SPEC: Pop the current node from the stack of open elements.
+                self.stack_of_open_elements.pop_current_element();
+                // SPEC: Switch the insertion mode to "in table".
+                self.switch_insertion_mode_to(InsertionMode::InTable);
+            }
+            Token::StartTag { name, .. }
+                if name == "caption"
+                    || name == "col"
+                    || name == "colgroup"
+                    || name == "tbody"
+                    || name == "tfoot"
+                    || name == "thead" =>
+            {
+                start_tags_and_end_tag!();
+            }
+            Token::EndTag { name, .. } if name == "table" => {
+                start_tags_and_end_tag!();
+            }
+            Token::EndTag { name, .. }
+                if name == "body"
+                    || name == "caption"
+                    || name == "col"
+                    || name == "colgroup"
+                    || name == "html"
+                    || name == "td"
+                    || name == "th"
+                    || name == "body" =>
+            {
+                // SPEC: Parse error. Ignore the token.
+                log_parser_error!();
+            }
+            _ => {
+                // SPEC: Process the token using the rules for the "in table" insertion mode.
+                self.process_token_using_the_rules_for(InsertionMode::InTable, token);
+            }
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/#clear-the-stack-back-to-a-table-body-context
+    fn clear_the_stack_back_to_a_table_body_context(&mut self) {
+        // SPEC: When the steps above require the UA to clear the stack back to a table body context,
+        //       it means that the UA must, while the current node is not a tbody, tfoot, thead, template, or html element,
+        //       pop elements from the stack of open elements.
+        while !self.current_node_is_one_of_elements_with_tag(&[
+            "tbody", "tfoot", "thead", "template", "html",
+        ]) {
+            self.stack_of_open_elements.pop_current_element();
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/#parsing-main-intr
+    fn handle_in_row(&mut self, token: &mut Token) {
+        match token {
+            Token::StartTag { name, .. } if name == "th" || name == "td" => {
+                // SPEC: Clear the stack back to a table row context. (See below.)
+                self.clear_the_stack_back_to_a_table_row_context();
+                // SPEC: Insert an HTML element for the token, then switch the insertion mode to "in cell".
+                self.insert_html_element_for_token(&token);
+                // SPEC: Insert a marker at the end of the list of active formatting elements.
+                self.list_of_active_formatting_elements
+                    .insert_marker_at_end();
+            }
+            Token::EndTag { name, .. } if name == "tr" => {
+                // SPEC: If the stack of open elements does not have a tr element in table scope,
+                if !self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_table_scope("tr")
+                {
+                    // SPEC: this is a parse error; ignore the token.
+                }
+
+                // SPEC: Otherwise:
+                // SPEC: Clear the stack back to a table row context. (See below.)
+                self.clear_the_stack_back_to_a_table_row_context();
+                // SPEC: Pop the current node (which will be a tr element) from the stack of open elements.
+                self.stack_of_open_elements.pop_current_element();
+                // SPEC: Switch the insertion mode to "in table body".
+                self.switch_insertion_mode_to(InsertionMode::InTableBody);
+            }
+            Token::StartTag { name, .. }
+                if name == "caption"
+                    || name == "col"
+                    || name == "colgroup"
+                    || name == "tbody"
+                    || name == "tfoot"
+                    || name == "thead"
+                    || name == "tr" =>
+            {
+                todo!()
+            }
+            Token::EndTag { name, .. } if name == "table" => {
+                todo!()
+            }
+            Token::EndTag { name, .. } if name == "tbody" || name == "tfoot" || name == "thead" => {
+                todo!()
+            }
+            Token::EndTag { name, .. }
+                if name == "body"
+                    || name == "caption"
+                    || name == "col"
+                    || name == "colgroup"
+                    || name == "html"
+                    || name == "td"
+                    || name == "th" =>
+            {
+                // SPEC: Parse error. Ignore the token.
+            }
+            _ => {
+                // SPEC: Process the token using the rules for the "in table" insertion mode.
+                self.process_token_using_the_rules_for(InsertionMode::InTable, token);
+            }
+        }
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/#clear-the-stack-back-to-a-table-row-context
+    fn clear_the_stack_back_to_a_table_row_context(&mut self) {
+        // SPEC: When the steps above require the UA to clear the stack back to a table row context,
+        //       it means that the UA must, while the current node is not a tr, template, or html element,
+        //       pop elements from the stack of open elements.
+        while !self.current_node_is_one_of_elements_with_tag(&["tr", "template", "html"]) {
+            self.stack_of_open_elements.pop_current_element();
+        }
+    }
+
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-afterbody
-    fn handle_after_body(&mut self, token: &Token) {
+    fn handle_after_body(&mut self, token: &mut Token) {
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // SPEC: Process the token using the rules for the "in body" insertion mode.
-                self.process_token_using_the_rules_for(InsertionMode::InBody);
+                self.process_token_using_the_rules_for(InsertionMode::InBody, token);
             }
             Token::Comment { .. } => todo!(),
             Token::Doctype { .. } => {
@@ -1044,7 +1966,7 @@ impl<'arena> Parser<'arena> {
             }
             Token::StartTag { name, .. } if name == "html" => {
                 // SPEC: Process the token using the rules for the "in body" insertion mode.
-                self.process_token_using_the_rules_for(InsertionMode::InBody);
+                self.process_token_using_the_rules_for(InsertionMode::InBody, token);
             }
             Token::EndTag { name, .. } if name == "html" => {
                 // SPEC: If the parser was created as part of the HTML fragment parsing algorithm,
@@ -1064,23 +1986,31 @@ impl<'arena> Parser<'arena> {
 
                 // SPEC: Switch the insertion mode to "in body" and reprocess the token.
                 self.switch_insertion_mode_to(InsertionMode::InBody);
-                self.reprocess_token();
+                self.reprocess_token(token);
             }
         }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#the-after-after-body-insertion-mode
-    fn handle_after_after_body(&mut self, token: &Token) {
-        let mut process_token = || {
-            // SPEC: Process the token using the rules for the "in body" insertion mode.
-            self.process_token_using_the_rules_for(InsertionMode::InBody);
-        };
+    fn handle_after_after_body(&mut self, token: &mut Token) {
+        macro_rules! process_token {
+            () => {
+                // SPEC: Process the token using the rules for the "in body" insertion mode.
+                self.process_token_using_the_rules_for(InsertionMode::InBody, token);
+            };
+        }
 
         match token {
             Token::Comment { .. } => todo!(),
-            Token::Doctype { .. } => process_token(),
-            Token::Character { data } if is_parser_whitespace(*data) => process_token(),
-            Token::StartTag { name, .. } if name == "html" => process_token(),
+            Token::Doctype { .. } => {
+                process_token!();
+            }
+            Token::Character { data } if is_parser_whitespace(*data) => {
+                process_token!();
+            }
+            Token::StartTag { name, .. } if name == "html" => {
+                process_token!();
+            }
             Token::EndOfFile => {
                 // SPEC: Stop parsing.
                 self.stop_parsing()
@@ -1091,13 +2021,18 @@ impl<'arena> Parser<'arena> {
 
                 // SPEC: Switch the insertion mode to "in body" and reprocess the token.
                 self.switch_insertion_mode_to(InsertionMode::InBody);
-                self.reprocess_token();
+                self.reprocess_token(token);
             }
         }
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inforeign
     fn process_token_using_the_rules_for_foreign_content(&mut self, token: &mut Token) {
+        eprintln!(
+            "\x1b[32m[Parser::InsertionMode::{:?}] {:?}\x1b[0m",
+            self.insertion_mode, token
+        );
+
         // SPEC: When the user agent is to apply the rules for parsing tokens in foreign content, the user agent must handle the token as follows:
         match token {
             Token::Character { data } if data == &'\u{0000}' => {
@@ -1185,7 +2120,7 @@ impl<'arena> Parser<'arena> {
                 // FIXME: Implement
 
                 // SPEC: Reprocess the token according to the rules given in the section corresponding to the current insertion mode in HTML content.
-                self.reprocess_token();
+                self.reprocess_token(token);
             }
             Token::StartTag { self_closing, .. } => {
                 // FIXME Implement SPEC: If the adjusted current node is an element in the MathML namespace, adjust MathML attributes for the token. (This fixes the case of MathML attributes that are not all lowercase.)
@@ -1201,8 +2136,8 @@ impl<'arena> Parser<'arena> {
                 } else {
                     // SPEC: Otherwise
                     //       Pop the current node off the stack of open elements and acknowledge the token's self-closing flag.
-                    token.acknowledge_self_closing_flag();
-                    self.pop_current_element_off_stack_of_open_elements();
+                    token.acknowledge_self_closing_flag_if_set();
+                    self.stack_of_open_elements.pop_current_element();
                 }
 
                 // NOTE: This has been reordered
@@ -1231,7 +2166,7 @@ impl<'arena> Parser<'arena> {
         // SPEC: 3. Update the current document readiness to "interactive".
         // FIXME: Implement
         // SPEC: 4. Pop all the nodes off the stack of open elements.
-        self.open_elements.clear();
+        self.stack_of_open_elements.clear();
         // SPEC: 5. While the list of scripts that will execute when the document has finished parsing is not empty:
         // FIXME: Implement
         // SPEC: 6. Queue a global task on the DOM manipulation task source given the Document's relevant global object to run the following substeps:
@@ -1248,15 +2183,7 @@ impl<'arena> Parser<'arena> {
     }
 
     pub fn parse(&mut self) -> Ref<'arena> {
-        while let Some(token) = match self.reprocess_current_token {
-            true => self.tokenizer.current_token(),
-            false => self.tokenizer.next_token(),
-        } {
-            eprintln!(
-                "\x1b[32m[Parser::InsertionMode::{:?}] {:?}\x1b[0m",
-                self.insertion_mode, token
-            );
-
+        while let Some(token) = self.tokenizer.next_token() {
             let mut token = token.clone();
 
             // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#tree-construction-dispatcher
@@ -1272,19 +2199,17 @@ impl<'arena> Parser<'arena> {
             // FIXME If the adjusted current node is an HTML integration point and the token is a start tag
             // FIXME If the adjusted current node is an HTML integration point and the token is a character token
             //       If the token is an end-of-file token
-            if self.open_elements.is_empty()
+            if self.stack_of_open_elements.is_empty()
                 || match &self.adjusted_current_node().unwrap().data {
                     NodeData::Element { name, .. } => name.namespace == Some(Namespace::Html),
                     _ => false,
                 }
                 || matches!(token, Token::EndOfFile)
             {
-                self.process_token(&token);
+                self.process_token_using_the_rules_for(self.insertion_mode, &mut token);
             } else {
                 self.process_token_using_the_rules_for_foreign_content(&mut token)
             }
-
-            self.reprocess_current_token = false;
         }
 
         self.document

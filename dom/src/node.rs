@@ -2,6 +2,7 @@ use std::cell::{Cell, RefCell};
 
 use crate::arena::{Link, Ref};
 use crate::dom_exception::DomException;
+use crate::element::Element;
 use crate::{Attribute, QualifiedName};
 
 /// A HTML Node.
@@ -29,6 +30,52 @@ impl<'arena> Node<'arena> {
             last_child: Cell::new(None),
             data,
         }
+    }
+
+    pub fn root(&'arena self) -> Ref<'arena> {
+        // SPEC: The root of an object is itself, if its parent is null,
+        //       or else it is the root of its parent.
+        //       The root of a tree is any object participating in that tree whose parent is null.
+        // FIXME: Is the root always the document?
+        self.document()
+    }
+
+    pub fn are_same(a: Ref<'arena>, b: Ref<'arena>) -> bool {
+        std::ptr::eq(a, b)
+    }
+
+    pub fn are_same_optional(a: Option<Ref<'arena>>, b: Option<Ref<'arena>>) -> bool {
+        if let Some(a) = a {
+            if let Some(b) = b {
+                return std::ptr::eq(a, b);
+            }
+        }
+
+        a.is_none() && b.is_none()
+    }
+
+    pub fn have_same_root(a: Ref<'arena>, b: Ref<'arena>) -> bool {
+        Node::are_same(a.root(), b.root())
+    }
+
+    pub fn is_following(&'arena self, other: Ref<'arena>) -> bool {
+        // SPEC: An object A is following an object B if A and B are
+        //       in the same tree and A comes after B in tree order.
+        todo!()
+    }
+
+    pub fn is_preceding(&'arena self, other: Ref<'arena>) -> bool {
+        // SPEC: An object A is following an object B if A and B are
+        //       in the same tree and A comes after B in tree order.
+        todo!()
+    }
+
+    pub fn is_ancestor_of(&self, other: Ref<'arena>) -> bool {
+        todo!()
+    }
+
+    pub fn is_child_of(&self, other: Ref<'arena>) -> bool {
+        todo!()
     }
 
     pub fn document(&'arena self) -> Ref<'arena> {
@@ -74,44 +121,191 @@ impl<'arena> Node<'arena> {
     }
 
     pub fn is_document_fragment(&self) -> bool {
-        // FIXME: Implement
-        false
+        matches!(self.data, NodeData::DocumentFragment)
     }
 
     pub fn is_comment(&self) -> bool {
-        // FIXME: This could be more efficient
-        matches!(self.data, NodeData::Comment { .. })
+        matches!(
+            self.data,
+            NodeData::CharacterData {
+                variant: CharacterDataVariant::Comment,
+                ..
+            }
+        )
     }
 
     pub fn is_doctype(&self) -> bool {
-        // FIXME: This could be more efficient
         matches!(self.data, NodeData::Doctype { .. })
     }
 
     pub fn is_document(&self) -> bool {
-        // FIXME: This could be more efficient
         matches!(self.data, NodeData::Document)
     }
 
     pub fn is_element(&self) -> bool {
-        // FIXME: This could be more efficient
         matches!(self.data, NodeData::Element { .. })
     }
 
     pub fn is_character_data(&self) -> bool {
-        // FIXME: This could be more efficient
-        // FIXME: CharacterData should be implemented
-        self.is_text() || self.is_processing_instruction() || self.is_comment()
+        matches!(self.data, NodeData::CharacterData { .. })
     }
 
     pub fn is_processing_instruction(&self) -> bool {
-        // FIXME: This could be more efficient
-        matches!(self.data, NodeData::ProcessingInstruction { .. })
+        matches!(
+            self.data,
+            NodeData::CharacterData {
+                variant: CharacterDataVariant::ProcessingInstruction { .. },
+                ..
+            }
+        )
     }
 
     pub fn is_text(&self) -> bool {
-        // FIXME: This could be more efficient
-        matches!(self.data, NodeData::Text { .. })
+        matches!(
+            self.data,
+            NodeData::CharacterData {
+                variant: CharacterDataVariant::Text { .. },
+                ..
+            }
+        )
+    }
+
+    pub fn is_attr(&self) -> bool {
+        matches!(self.data, NodeData::Attr { .. })
+    }
+
+    pub fn is_element_with_one_of_tags(&self, tags: &[&str]) -> bool {
+        if let Some(name) = self.element_tag_name() {
+            return tags.contains(&name);
+        }
+        false
+    }
+
+    pub fn is_element_with_tag(&self, tag: &str) -> bool {
+        if let Some(name) = self.element_tag_name() {
+            return name == tag;
+        }
+        false
+    }
+
+    pub fn is_marker_element(&self) -> bool {
+        self.is_element_with_one_of_tags(&[
+            "applet", "object", "marquee", "template", "td", "th", "caption",
+        ])
+    }
+
+    pub fn is_special_tag(&self) -> bool {
+        self.is_element_with_one_of_tags(&[
+            "address",
+            "applet",
+            "area",
+            "article",
+            "aside",
+            "base",
+            "basefont",
+            "bgsound",
+            "blockquote",
+            "body",
+            "br",
+            "button",
+            "caption",
+            "center",
+            "col",
+            "colgroup",
+            "dd",
+            "details",
+            "dir",
+            "div",
+            "dl",
+            "dt",
+            "embed",
+            "fieldset",
+            "figcaption",
+            "figure",
+            "footer",
+            "form",
+            "frame",
+            "frameset",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "head",
+            "header",
+            "hgroup",
+            "hr",
+            "html",
+            "iframe",
+            "img",
+            "input",
+            "keygen",
+            "li",
+            "link",
+            "listing",
+            "main",
+            "marquee",
+            "menu",
+            "meta",
+            "nav",
+            "noembed",
+            "noframes",
+            "noscript",
+            "object",
+            "ol",
+            "p",
+            "param",
+            "plaintext",
+            "pre",
+            "script",
+            "search",
+            "section",
+            "select",
+            "source",
+            "style",
+            "summary",
+            "table",
+            "tbody",
+            "td",
+            "template",
+            "textarea",
+            "tfoot",
+            "th",
+            "thead",
+            "title",
+            "tr",
+            "track",
+            "ul",
+            "wbr",
+            "xmp",
+            "mi",
+            "mo",
+            "mn",
+            "ms",
+            "mtext",
+            "annotation-xml",
+            "foreignObject",
+            "desc",
+            "title",
+        ])
+    }
+
+    pub fn length(&'arena self) -> usize {
+        if self.is_doctype() || self.is_attr() {
+            0
+        } else if let NodeData::CharacterData { data, .. } = self.data.clone() {
+            return data.borrow().len();
+        } else {
+            self.children().len()
+        }
+    }
+
+    pub fn element_tag_name(&self) -> Option<&str> {
+        if let NodeData::Element { name, .. } = &self.data {
+            return Some(&name.local);
+        }
+        None
     }
 
     pub fn dump(&'arena self) {
@@ -119,15 +313,17 @@ impl<'arena> Node<'arena> {
     }
 
     fn internal_dump(&'arena self, indentation: &str) {
-        let indent = "    ";
+        let indent = "  ";
 
         let (opening_tag, closing_tag) = self.data.tags();
         if let Some(opening_tag) = opening_tag {
             println!("{indentation}{opening_tag}");
         }
 
-        if let NodeData::Text { contents } = &self.data {
-            println!("{indentation}{indent}{}", contents.borrow());
+        if let NodeData::CharacterData { variant, data } = &self.data {
+            if matches!(variant, CharacterDataVariant::Text { .. }) {
+                println!("{indentation}{indent}\"{}\"", data.borrow());
+            }
         }
 
         for child in self.children().iter() {
@@ -221,8 +417,10 @@ impl<'arena> Node<'arena> {
         // FIXME: Implement
 
         // SPEC: 3. If child is non-null and its parent is not parent, then throw a "NotFoundError" DOMException.
-        if child.is_some_and(|c| c.parent() != Some(self)) {
-            return Err(DomException::NotFoundError);
+        if let Some(Some(child_parent)) = child.map(|c| c.parent()) {
+            if !Node::are_same(child_parent, self) {
+                return Err(DomException::NotFoundError);
+            }
         }
 
         // SPEC: 4. If node is not a DocumentFragment, DocumentType, Element, or CharacterData node, then throw a "HierarchyRequestError" DOMException.
@@ -233,7 +431,9 @@ impl<'arena> Node<'arena> {
         {
             return Err(DomException::HierarchyRequestError);
         }
-        // SPEC: 5. If either node is a Text node and parent is a document, or node is a doctype and parent is not a document, then throw a "HierarchyRequestError" DOMException.
+        // SPEC: 5. If either node is a Text node and parent is a document,
+        //          or node is a doctype and parent is not a document,
+        //          then throw a "HierarchyRequestError" DOMException.
         if (node.is_text() && self.is_document()) || (node.is_doctype() && !self.is_document()) {
             return Err(DomException::HierarchyRequestError);
         }
@@ -269,7 +469,7 @@ impl<'arena> Node<'arena> {
     }
 
     // SPECLINK: https://dom.spec.whatwg.org/#concept-node-insert
-    pub fn insert(&'arena self, node: &'arena Self, child: Option<&'arena Self>) {
+    pub fn insert_before(&'arena self, node: &'arena Self, child: Option<&'arena Self>) {
         // SPEC: 1. Let nodes be node’s children, if node is a DocumentFragment node; otherwise « node ».
         let mut nodes = Vec::new();
         match node.is_document_fragment() {
@@ -294,7 +494,9 @@ impl<'arena> Node<'arena> {
 
         // SPEC: 5. If child is non-null, then:
         if let Some(_child) = child {
-            todo!()
+            // SPEC: 5.1. For each live range whose start node is parent and start offset is greater than child’s index, increase its start offset by count.
+            // SPEC: 5.2. For each live range whose end node is parent and end offset is greater than child’s index, increase its end offset by count.
+            // FIXME: Implement
         }
 
         // SPEC: 6. Let previousSibling be child’s previous sibling or parent’s last child if child is null.
@@ -308,9 +510,22 @@ impl<'arena> Node<'arena> {
             // SPEC: 7.1. Adopt node into parent’s node document.
             self.document().adopt(node);
 
-            if let Some(_child) = child {
+            if let Some(child) = child {
                 // SPEC: 7.3. Otherwise, insert node into parent’s children before child’s index.
-                todo!("Implement inserting child");
+                self.children.borrow_mut().insert(child.index(), node);
+
+                node.previous_sibling.set(child.previous_sibling());
+                node.next_sibling.set(Some(child));
+                if let Some(child_previous_sibling) = child.previous_sibling.get() {
+                    child_previous_sibling.next_sibling.set(Some(node));
+                }
+                if Node::are_same_optional(self.first_child.get(), Some(child)) {
+                    self.first_child.set(Some(node));
+                }
+
+                child.previous_sibling.set(Some(node));
+
+                node.parent.set(Some(self));
             } else {
                 // SPEC: 7.2. If child is null, then append node to parent’s children.
                 self.children.borrow_mut().push(node);
@@ -360,7 +575,7 @@ impl<'arena> Node<'arena> {
         }
 
         // SPEC: 4. Insert node into parent before referenceChild.
-        self.insert(node, reference_child);
+        self.insert_before(node, reference_child);
 
         // SPEC: 5. Return node.
         node
@@ -412,25 +627,33 @@ impl<'arena> std::fmt::Debug for Node<'arena> {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub enum NodeData {
     Document,
+    DocumentFragment,
+    Element {
+        name: QualifiedName,
+        attributes: RefCell<Vec<Attribute>>,
+    },
     Doctype {
         name: String,
         public_id: String,
         system_id: String,
     },
-    Text {
-        contents: RefCell<String>,
+    CharacterData {
+        data: RefCell<String>,
+        variant: CharacterDataVariant,
     },
-    Comment {
-        contents: String,
+    Attr {
+        qualified_name: QualifiedName,
+        name: String,
+        value: String,
+        owner_element: Option<Element>,
     },
-    Element {
-        name: QualifiedName,
-        attributes: RefCell<Vec<Attribute>>,
-    },
-    ProcessingInstruction {
-        target: String,
-        contents: String,
-    },
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+pub enum CharacterDataVariant {
+    Text,
+    ProcessingInstruction { target: String },
+    Comment,
 }
 
 impl NodeData {
@@ -439,14 +662,15 @@ impl NodeData {
 
         match self {
             NodeData::Document => (Some("#document".to_string()), std_close),
-            NodeData::Doctype { .. } => (None, None),
-            NodeData::Text { .. } => (Some("#text".to_string()), std_close),
-            NodeData::Comment { .. } => (None, None),
+            NodeData::CharacterData { data, variant } => match variant {
+                CharacterDataVariant::Text { .. } => (Some("#text".to_string()), std_close),
+                _ => (None, None),
+            },
             NodeData::Element { name, .. } => (
                 Some(format!("<{}>", name.local)),
                 Some(format!("</{}>", name.local)),
             ),
-            NodeData::ProcessingInstruction { .. } => (None, None),
+            _ => (None, None),
         }
     }
 }
@@ -456,12 +680,45 @@ impl ToString for NodeData {
         match self {
             NodeData::Document => "Document".to_string(),
             NodeData::Doctype { name, .. } => format!("DOCTYPE {name}"),
-            NodeData::Text { .. } => "Text".to_string(),
-            NodeData::Comment { .. } => "Comment".to_string(),
             NodeData::Element { name, .. } => {
                 format!("Element({})", name.local)
             }
-            NodeData::ProcessingInstruction { .. } => "ProcessingInstruction".to_string(),
+            NodeData::CharacterData { variant, .. } => match variant {
+                CharacterDataVariant::Text { .. } => "Text".to_string(),
+                CharacterDataVariant::ProcessingInstruction { .. } => {
+                    "ProcessingInstruction".to_string()
+                }
+                CharacterDataVariant::Comment { .. } => "Comment".to_string(),
+            },
+            NodeData::DocumentFragment => "DocumentFragment".to_string(),
+            NodeData::Attr { .. } => "Attr".to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::node::{Node, NodeData};
+
+    #[test]
+    fn are_same_optional() {
+        let a = &Node::new(None, NodeData::Document);
+        let b = &Node::new(None, NodeData::Document);
+
+        assert_eq!(Node::are_same_optional(Some(a), Some(b)), false);
+        assert_eq!(Node::are_same_optional(Some(a), None), false);
+        assert_eq!(Node::are_same_optional(None, Some(b)), false);
+        assert_eq!(Node::are_same_optional(Some(a), Some(a)), true);
+        assert_eq!(Node::are_same_optional(None, None), true);
+    }
+
+    #[test]
+    fn are_same() {
+        let a = &Node::new(None, NodeData::Document);
+        let b = &Node::new(None, NodeData::Document);
+
+        assert_eq!(Node::are_same(a, b), false);
+        assert_eq!(Node::are_same(b, a), false);
+        assert_eq!(Node::are_same(a, a), true);
     }
 }

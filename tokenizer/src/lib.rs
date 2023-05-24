@@ -120,15 +120,26 @@ pub enum Token {
 }
 
 impl Token {
-    pub fn acknowledge_self_closing_flag(&mut self) {
+    pub fn acknowledge_self_closing_flag_if_set(&mut self) {
         if let Token::StartTag {
             self_closing_acknowledged,
+            self_closing,
             ..
         } = self
         {
-            *self_closing_acknowledged = true;
+            if *self_closing {
+                *self_closing_acknowledged = true;
+            }
         } else {
             panic!("Tried to acknowledge non-StarTag token!");
+        }
+    }
+
+    pub fn tag_name(&self) -> Option<String> {
+        match self {
+            Token::StartTag { name, .. } => Some(name.clone()),
+            Token::EndTag { name, .. } => Some(name.clone()),
+            _ => None,
         }
     }
 }
