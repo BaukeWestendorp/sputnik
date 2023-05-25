@@ -1,12 +1,13 @@
 use std::cell::RefCell;
 
-use crate::list_of_active_formatting_elements::ListOfActiveFormattingElements;
-use crate::stack_of_open_elements::StackOfOpenElements;
 use dom::arena::{Arena, NodeRef};
 use dom::dom_exception::DomException;
 use dom::node::{CharacterDataVariant, Node, NodeData};
 use dom::{Namespace, QualifiedName};
 use tokenizer::{Token, Tokenizer};
+
+use crate::list_of_active_formatting_elements::ListOfActiveFormattingElements;
+use crate::stack_of_open_elements::StackOfOpenElements;
 
 mod list_of_active_formatting_elements;
 mod stack_of_open_elements;
@@ -1255,7 +1256,49 @@ impl<'a> Parser<'a> {
                     self.form_element = self.current_node();
                 }
             }
-            Token::StartTag { name, .. } if name == "li" => todo!(),
+            Token::StartTag { name, .. } if name == "li" => {
+                // SPEC: 1. Set the frameset-ok flag to "not ok".
+                self.frameset_ok = FramesetState::NotOk;
+
+                // SPEC: 2. Initialize node to be the current node (the bottommost node of the stack).
+                for node in self.stack_of_open_elements.elements.iter().rev() {
+                    // SPEC: 3. Loop: If node is an li element, then run these substeps:
+                    if node.is_element_with_tag("li") {
+                        // SPEC: 3.1. Generate implied end tags, except for li elements.
+                        self.generate_implied_end_tags_except_for(Some("li"));
+                        // SPEC: 3.2. If the current node is not an li element, then this is a parse error.
+                        if !self.current_node().unwrap().is_element_with_tag("li") {
+                            log_parser_error!();
+                        }
+                        // SPEC: 3.3. Pop elements from the stack of open elements until an li element has been popped from the stack.
+                        self.stack_of_open_elements
+                            .pop_elements_until_element_has_been_popped("li");
+
+                        // SPEC: 3.4. Jump to the step labeled done below.
+                        break;
+                    }
+
+                    // SPEC: 4. If node is in the special category, but is not an address, div, or p element, then jump to the step labeled done below.
+                    if node.is_element_with_special_tag()
+                        && !node.is_element_with_one_of_tags(&["address", "div", "p"])
+                    {
+                        break;
+                    }
+
+                    // SPEC: 5. Otherwise, set node to the previous entry in the stack of open elements and return to the step labeled loop.
+                }
+
+                // SPEC: 6. Done: If the stack of open elements has a p element in button scope, then close a p element.
+                if self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_button_scope("p")
+                {
+                    self.close_a_p_element();
+                }
+
+                // SPEC: 7. Finally, insert an HTML element for the token.
+                self.insert_html_element_for_token(token);
+            }
             Token::StartTag { name, .. } if name == "dd" || name == "dt" => todo!(),
             Token::StartTag { name, .. } if name == "plaintext" => todo!(),
             Token::StartTag { name, .. } if name == "button" => todo!(),
@@ -1364,7 +1407,28 @@ impl<'a> Parser<'a> {
                 self.close_a_p_element();
             }
             Token::EndTag { name, .. } if name == "li" => {
-                todo!()
+                // SPEC: If the stack of open elements does not have an li element in list item scope,
+                //       then this is a parse error; ignore the token.
+                if self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_list_item_scope("li")
+                {
+                    log_parser_error!();
+                    return;
+                }
+
+                // SPEC: Otherwise, run these steps:
+                // SPEC: 1. Generate implied end tags, except for li elements.
+                self.generate_implied_end_tags_except_for(Some("li"));
+
+                // SPEC: 2. If the current node is not an li element, then this is a parse error.
+                if !self.current_node().unwrap().is_element_with_tag("li") {
+                    log_parser_error!();
+                }
+
+                // SPEC: 3. Pop elements from the stack of open elements until an li element has been popped from the stack.
+                self.stack_of_open_elements
+                    .pop_elements_until_element_has_been_popped("li");
             }
             Token::EndTag { name, .. } if name == "dd" || name == "dt" => {
                 todo!()
@@ -1583,7 +1647,7 @@ impl<'a> Parser<'a> {
                 break;
             } else {
                 // SPEC: 3. Otherwise, if node is in the special category,
-                if node.is_special_tag() {
+                if node.is_element_with_special_tag() {
                     // SPEC: then this is a parse error; ignore the token,
                     log_parser_error!();
                     // SPEC: and return.

@@ -261,7 +261,7 @@ impl<'a> Node<'a> {
         ])
     }
 
-    pub fn is_special_tag(&self) -> bool {
+    pub fn is_element_with_special_tag(&self) -> bool {
         self.is_element_with_one_of_tags(&[
             "address",
             "applet",
@@ -346,15 +346,16 @@ impl<'a> Node<'a> {
             "ul",
             "wbr",
             "xmp",
-            "mi",
-            "mo",
-            "mn",
-            "ms",
-            "mtext",
-            "annotation-xml",
-            "foreignObject",
-            "desc",
-            "title",
+            // FIXME: Implement MathML and SVG namespace elements
+            // "mi",
+            // "mo",
+            // "mn",
+            // "ms",
+            // "mtext",
+            // "annotation-xml",
+            // "foreignObject",
+            // "desc",
+            // "title",
         ])
     }
 

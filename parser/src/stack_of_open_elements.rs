@@ -43,6 +43,10 @@ impl<'a> StackOfOpenElements<'a> {
         self.elements.first().copied()
     }
 
+    pub fn second_to_last(&self) -> Option<NodeRef<'a>> {
+        self.elements.get(self.elements.len() - 2).copied()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.elements.is_empty()
     }
@@ -106,7 +110,7 @@ impl<'a> StackOfOpenElements<'a> {
             if Node::are_same(element, target) {
                 break;
             }
-            if element.is_special_tag() {
+            if element.is_element_with_special_tag() {
                 best = Some(*element);
             }
         }
@@ -177,6 +181,11 @@ impl<'a> StackOfOpenElements<'a> {
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#has-an-element-in-scope
     pub fn has_element_with_tag_name_in_scope(&self, tag_name: &str) -> bool {
         self.has_tag_name_in_scope(tag_name, BASE_SCOPE_ELEMENTS)
+    }
+
+    // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-list-item-scope
+    pub fn has_element_with_tag_name_in_list_item_scope(&self, tag_name: &str) -> bool {
+        self.has_tag_name_in_scope(tag_name, &[BASE_SCOPE_ELEMENTS, &["ol", "ul"]].concat())
     }
 
     // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-button-scope
