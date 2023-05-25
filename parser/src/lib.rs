@@ -127,6 +127,7 @@ pub struct Parser<'a> {
     stack_of_open_elements: StackOfOpenElements<'a>,
     list_of_active_formatting_elements: ListOfActiveFormattingElements<'a>,
     head_element: Option<NodeRef<'a>>,
+    form_element: Option<NodeRef<'a>>,
     foster_parenting: bool,
     scripting_flag: bool,
     frameset_ok: FramesetState,
@@ -144,6 +145,7 @@ impl<'a> Parser<'a> {
             stack_of_open_elements: StackOfOpenElements::new(),
             list_of_active_formatting_elements: ListOfActiveFormattingElements::new(),
             head_element: None,
+            form_element: None,
             foster_parenting: false,
             scripting_flag: false,
             frameset_ok: FramesetState::Ok,
@@ -1069,7 +1071,12 @@ impl<'a> Parser<'a> {
                     || name == "template"
                     || name == "title" =>
             {
-                todo!()
+                // SPEC: Process the token using the rules for the "in head" insertion mode.
+                self.process_token_using_the_rules_for(InsertionMode::InHead, token);
+            }
+            Token::EndTag { name, .. } if name == "template" => {
+                // SPEC: Process the token using the rules for the "in head" insertion mode.
+                self.process_token_using_the_rules_for(InsertionMode::InHead, token);
             }
             Token::EndTag { name, .. } if name == "template" => todo!(),
             Token::StartTag { name, .. } if name == "body" => todo!(),
@@ -1189,7 +1196,37 @@ impl<'a> Parser<'a> {
                 todo!()
             }
             Token::StartTag { name, .. } if name == "pre" || name == "listing" => todo!(),
-            Token::StartTag { name, .. } if name == "form" => todo!(),
+            Token::StartTag { name, .. } if name == "form" => {
+                // SPEC: If the form element pointer is not null, and there is no template element
+                //       on the stack of open elements,
+                if self.form_element.is_some()
+                    && self
+                        .stack_of_open_elements
+                        .contains_one_of_tags(&["template"])
+                {
+                    // SPEC:then this is a parse error; ignore the token.
+                    return;
+                }
+                // SPEC: Otherwise:
+                // SPEC: If the stack of open elements has a p element in button scope,
+                if self
+                    .stack_of_open_elements
+                    .has_element_with_tag_name_in_button_scope("p")
+                {
+                    // SPEC: then close a p element.
+                    self.close_a_p_element();
+                }
+                // SPEC: Insert an HTML element for the token,
+                self.insert_html_element_for_token(token);
+                // SPEC: and, if there is no template element on the stack of open elements,
+                if self
+                    .stack_of_open_elements
+                    .contains_one_of_tags(&["template"])
+                {
+                    // SPEC: set the form element pointer to point to the element created.
+                    self.form_element = self.current_node();
+                }
+            }
             Token::StartTag { name, .. } if name == "li" => todo!(),
             Token::StartTag { name, .. } if name == "dd" || name == "dt" => todo!(),
             Token::StartTag { name, .. } if name == "plaintext" => todo!(),
@@ -1246,7 +1283,44 @@ impl<'a> Parser<'a> {
                 self.stack_of_open_elements
                     .pop_elements_until_element_has_been_popped(name);
             }
-            Token::EndTag { name, .. } if name == "form" => todo!(),
+            Token::EndTag { name, .. } if name == "form" => {
+                // SPEC: If there is no template element on the stack of open elements, then run these substeps:
+                if !self
+                    .stack_of_open_elements
+                    .contains_one_of_tags(&["template"])
+                {
+                    // SPEC: 1. Let node be the element that the form element pointer is set to, or null if it is not set to an element.
+                    let node = self.form_element;
+                    // SPEC: 2. Set the form element pointer to null.
+                    self.form_element = None;
+                    // SPEC: 3. If node is null or if the stack of open elements does not have node in scope,
+                    if node.is_none()
+                        || self
+                            .stack_of_open_elements
+                            .has_element_in_scope(node.unwrap())
+                    {
+                        // SPEC: then this is a parse error;
+                        log_parser_error!();
+                        // return and ignore the token.
+                        return;
+                    }
+                    // SPEC: 4. Generate implied end tags.
+                    self.generate_implied_end_tags_except_for(None);
+                    // SPEC: 5. If the current node is not node,
+                    if Node::are_same(self.current_node().unwrap(), node.unwrap()) {
+                        // SPEC: then this is a parse error.
+                        log_parser_error!();
+                    }
+                    // SPEC: 6. Remove node from the stack of open elements.
+                    self.stack_of_open_elements.remove_element(node.unwrap());
+                } else {
+                    // SPEC: 1. If the stack of open elements does not have a form element in scope, then this is a parse error; return and ignore the token.
+                    // SPEC: 2. Generate implied end tags.
+                    // SPEC: 3. If the current node is not a form element, then this is a parse error.
+                    // SPEC: 4. Pop elements from the stack of open elements until a form element has been popped from the stack.
+                    todo!();
+                }
+            }
             Token::EndTag { name, .. } if name == "p" => {
                 // SPEC: If the stack of open elements does not have a p element in button scope, then this is a parse error;
                 //       insert an HTML element for a "p" start tag token with no attributes.
@@ -1392,7 +1466,31 @@ impl<'a> Parser<'a> {
                 // SPEC: Set the frameset-ok flag to "not ok".
                 self.frameset_ok = FramesetState::NotOk;
             }
-            Token::StartTag { name, .. } if name == "input" => todo!(),
+            Token::StartTag { name, .. } if name == "input" => {
+                // SPEC: Reconstruct the active formatting elements, if any.
+                self.reconstruct_active_formatting_elements_if_any();
+
+                // SPEC: Insert an HTML element for the token.
+                self.insert_html_element_for_token(token);
+
+                // SPEC: Immediately pop the current node off the stack of open elements.
+                self.stack_of_open_elements.pop_current_element();
+
+                // SPEC: Acknowledge the token's self-closing flag, if it is set.
+                token.acknowledge_self_closing_flag_if_set();
+
+                // SPEC: If the token does not have an attribute with the name "type",
+                //       or if it does, but that attribute's value is not an ASCII case-insensitive match for the string "hidden",
+                if let Token::StartTag { attributes, .. } = token {
+                    let type_attr = attributes.iter().find(|attr| attr.name == "type");
+                    if type_attr.is_none()
+                        || type_attr.unwrap().value.eq_ignore_ascii_case("hidden")
+                    {
+                        // SPEC: then: set the frameset-ok flag to "not ok".
+                        self.frameset_ok = FramesetState::NotOk;
+                    }
+                }
+            }
             Token::StartTag { name, .. }
                 if name == "param" || name == "source" || name == "track" =>
             {
@@ -1766,8 +1864,11 @@ impl<'a> Parser<'a> {
                 self.reprocess_token(token);
             }
             Token::StartTag { name, .. } if name == "table" => {
+                // FIXME: On HackerNews, nested tables stay nested. What is going on?
+
                 // SPEC: Parse error.
                 log_parser_error!("Invalid token: table in table");
+
                 // SPEC: If the stack of open elements does not have a table element in table scope,
                 if !self
                     .stack_of_open_elements
@@ -1776,6 +1877,7 @@ impl<'a> Parser<'a> {
                     // SPEC: ignore the token.
                     return;
                 }
+
                 // SPEC: Otherwise:
                 // SPEC: Pop elements from this stack until a table element has been popped from the stack.
                 self.stack_of_open_elements
