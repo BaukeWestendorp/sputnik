@@ -654,7 +654,7 @@ impl<'a> Parser<'a> {
         //          otherwise the algorithm invoked was the generic RCDATA element parsing algorithm,
         //          switch the tokenizer to the RCDATA state.
         match algorithm {
-            GenericParsingAlgorithm::RawText => todo!(),
+            GenericParsingAlgorithm::RawText => self.tokenizer.switch_to(tokenizer::State::RawText),
             GenericParsingAlgorithm::RCData => {
                 self.tokenizer.switch_to(tokenizer::State::RcData);
             }
@@ -887,13 +887,18 @@ impl<'a> Parser<'a> {
                 self.follow_generic_parsing_algorithm(GenericParsingAlgorithm::RCData, token);
             }
             Token::StartTag { name, .. } if name == "noscript" && self.scripting_flag => {
-                todo!()
+                // SPEC: Follow the generic raw text element parsing algorithm.
+                self.follow_generic_parsing_algorithm(GenericParsingAlgorithm::RawText, token);
             }
             Token::StartTag { name, .. } if name == "noframes" || name == "style" => {
-                todo!()
+                // SPEC: Follow the generic raw text element parsing algorithm.
+                self.follow_generic_parsing_algorithm(GenericParsingAlgorithm::RawText, token);
             }
             Token::StartTag { name, .. } if name == "noscript" && self.scripting_flag => {
-                todo!()
+                // SPEC: Insert an HTML element for the token.
+                self.insert_html_element_for_token(token);
+                // SPEC: Switch the insertion mode to "in head noscript".
+                self.switch_insertion_mode_to(InsertionMode::InHeadNoscript);
             }
             Token::StartTag { name, .. } if name == "script" => {
                 // SPEC: 1. Let the adjusted insertion location be the appropriate place for inserting a node.
