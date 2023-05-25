@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use crate::list_of_active_formatting_elements::ListOfActiveFormattingElements;
 use crate::stack_of_open_elements::StackOfOpenElements;
 use dom::arena::{Arena, NodeRef};
+use dom::dom_exception::DomException;
 use dom::node::{CharacterDataVariant, Node, NodeData};
 use dom::{Namespace, QualifiedName};
 use tokenizer::{Token, Tokenizer};
@@ -79,6 +80,26 @@ enum InsertionLocation<'a> {
 struct AdjustedInsertionLocation<'a> {
     parent: NodeRef<'a>,
     child: InsertionLocation<'a>,
+}
+
+impl<'a> AdjustedInsertionLocation<'a> {
+    pub(crate) fn is_posible_to_insert(&self, element: NodeRef<'a>) -> Result<(), DomException> {
+        let child = match self.child {
+            InsertionLocation::BeforeElement(e) => Some(e),
+            InsertionLocation::AfterLastChildIfAny => None,
+        };
+        self.parent.ensure_pre_insertion_validity(element, child)
+    }
+}
+
+impl<'a> AdjustedInsertionLocation<'a> {
+    pub fn insert_element(&self, element: NodeRef<'a>) {
+        let child = match self.child {
+            InsertionLocation::BeforeElement(e) => Some(e),
+            InsertionLocation::AfterLastChildIfAny => None,
+        };
+        self.parent.insert_before(&element, child);
+    }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
@@ -497,24 +518,14 @@ impl<'a> Parser<'a> {
         //          with the intended parent being the element in which the adjusted insertion location finds itself.
         let element = self.create_element_for_token(token, adjusted_insertion_location.parent);
 
-        let child = match adjusted_insertion_location.child {
-            InsertionLocation::BeforeElement(element) => Some(element),
-            InsertionLocation::AfterLastChildIfAny => None,
-        };
-
-        let pre_insertion_validity = adjusted_insertion_location
-            .parent
-            .ensure_pre_insertion_validity(element, child);
-
         // SPEC: 3. If it is possible to insert element at the adjusted insertion location, then:
+        let pre_insertion_validity = adjusted_insertion_location.is_posible_to_insert(element);
         if pre_insertion_validity.is_ok() {
             // SPEC: 3.1. If the parser was not created as part of the HTML fragment parsing algorithm,
             //            then push a new element queue onto element's relevant agent's custom element reactions stack.
 
             // SPEC: 3.2. Insert element at the adjusted insertion location.
-            adjusted_insertion_location
-                .parent
-                .insert_before(element, child);
+            adjusted_insertion_location.insert_element(element);
 
             // SPEC: 3.3. If the parser was not created as part of the HTML fragment parsing algorithm,
             //            then pop the element queue from element's relevant agent's custom element reactions stack,
@@ -1646,13 +1657,7 @@ impl<'a> Parser<'a> {
             //           but using common ancestor as the override target.
             let adjusted_insertion_location =
                 self.appropriate_place_for_inserting_node(common_ancestor);
-            let child = match adjusted_insertion_location.child {
-                InsertionLocation::BeforeElement(element) => Some(element),
-                InsertionLocation::AfterLastChildIfAny => None,
-            };
-            adjusted_insertion_location
-                .parent
-                .insert_before(last_node, child);
+            adjusted_insertion_location.insert_element(last_node);
 
             // SPEC: 15. Create an element for the token for which formatting element was created,
             //           in the HTML namespace,
