@@ -2,10 +2,10 @@ use std::cell::{Cell, RefCell};
 
 use crate::arena::{NodeLink, NodeRef};
 use crate::dom_exception::DomException;
-use crate::{Attribute, QualifiedName};
+use crate::{Attribute, Namespace, QualifiedName};
 
 /// A HTML Node.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Eq, PartialOrd, Ord, Clone)]
 pub struct Node<'a> {
     document: NodeLink<'a>,
     parent: NodeLink<'a>,
@@ -15,6 +15,74 @@ pub struct Node<'a> {
     first_child: NodeLink<'a>,
     last_child: NodeLink<'a>,
     pub data: NodeData,
+}
+
+impl PartialEq for Node<'_> {
+    fn eq<'a>(&'a self, other: &'a Self) -> bool {
+        let data_matches = match (&self.data, &other.data) {
+            (
+                NodeData::Doctype {
+                    name: a_name,
+                    public_id: a_public_id,
+                    system_id: a_system_id,
+                },
+                NodeData::Doctype {
+                    name: b_name,
+                    public_id: b_public_id,
+                    system_id: b_system_id,
+                },
+            ) => a_name == b_name && a_public_id == b_public_id && a_system_id == b_system_id,
+            (
+                NodeData::Element {
+                    name: a_name,
+                    namespace: a_namespace,
+                    attributes: a_attributes,
+                },
+                NodeData::Element {
+                    name: b_name,
+                    namespace: b_namespace,
+                    attributes: b_attributes,
+                },
+            ) => a_name == b_name && a_namespace == b_namespace && a_attributes == b_attributes,
+
+            (
+                NodeData::Attr {
+                    namespace: a_namespace,
+                    local_name: a_local_name,
+                    value: a_value,
+                    ..
+                },
+                NodeData::Attr {
+                    namespace: b_namespace,
+                    local_name: b_local_name,
+                    value: b_value,
+                    ..
+                },
+            ) => a_namespace == b_namespace && a_local_name == b_local_name && a_value == b_value,
+            (
+                NodeData::CharacterData {
+                    data: a_data,
+                    variant: a_variant,
+                },
+                NodeData::CharacterData {
+                    data: b_data,
+                    variant: b_variant,
+                },
+            ) => a_data == b_data && a_variant == b_variant,
+            (a, b) => a == b,
+        };
+
+        data_matches
+            && (self.children.clone().into_inner().len()
+                == other.children.clone().into_inner().len())
+            && self
+                .children
+                .clone()
+                .into_inner()
+                .iter()
+                .zip(other.children.clone().into_inner().iter())
+                .all(|(a, b)| Node::are_same(*a, *b))
+    }
 }
 
 impl<'a> Node<'a> {
@@ -40,13 +108,13 @@ impl<'a> Node<'a> {
     }
 
     pub fn are_same(a: NodeRef<'a>, b: NodeRef<'a>) -> bool {
-        std::ptr::eq(a, b)
+        a == b
     }
 
     pub fn are_same_optional(a: Option<NodeRef<'a>>, b: Option<NodeRef<'a>>) -> bool {
         if let Some(a) = a {
             if let Some(b) = b {
-                return std::ptr::eq(a, b);
+                return Node::are_same(a, b);
             }
         }
 
@@ -623,6 +691,7 @@ pub enum NodeData {
     DocumentFragment,
     Element {
         name: QualifiedName,
+        namespace: Option<Namespace>,
         attributes: RefCell<Vec<Attribute>>,
     },
     Doctype {
@@ -635,7 +704,9 @@ pub enum NodeData {
         variant: CharacterDataVariant,
     },
     Attr {
-        qualified_name: QualifiedName,
+        namespace: Option<Namespace>,
+        prefix: Option<String>,
+        local_name: String,
         name: String,
         value: String,
         owner_element: Option<()>,

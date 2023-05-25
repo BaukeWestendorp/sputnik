@@ -1,5 +1,4 @@
 use dom::arena::NodeRef;
-use dom::node::Node;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct ListOfActiveFormattingElements<'a> {
@@ -37,6 +36,31 @@ impl<'a> ListOfActiveFormattingElements<'a> {
         self.elements.push(ActiveFormattingElement::Marker);
     }
 
+    pub fn pop(&mut self) {
+        self.elements.pop();
+    }
+
+    pub fn first_index_of(&self, target: NodeRef<'a>) -> Option<usize> {
+        self.elements
+            .iter()
+            .position(|e| *e == ActiveFormattingElement::Element(target))
+    }
+
+    pub fn replace(&mut self, target: NodeRef<'a>, replacement: NodeRef<'a>) {
+        if let Some(index) = self
+            .elements
+            .iter()
+            .position(|e| *e == ActiveFormattingElement::Element(target))
+        {
+            self.elements[index] = ActiveFormattingElement::Element(replacement);
+        }
+    }
+
+    pub fn insert(&mut self, index: usize, element: NodeRef<'a>) {
+        self.elements
+            .insert(index, ActiveFormattingElement::Element(element));
+    }
+
     pub fn remove(&mut self, element: NodeRef<'a>) {
         if let Some(index) = self
             .elements
@@ -51,45 +75,26 @@ impl<'a> ListOfActiveFormattingElements<'a> {
         self.elements.len()
     }
 
-    pub fn last_marker_index(&self) -> Option<usize> {
-        self.elements
-            .iter()
-            .rev()
-            .position(|element| matches!(element, ActiveFormattingElement::Marker))
-    }
-
-    pub fn last_element_that_is_between_index_and_has_tag_name(
-        &self,
-        start_index: usize,
-        end_index: usize,
-        tag_name: &str,
-    ) -> Option<ActiveFormattingElement<'a>> {
-        self.elements
-            .iter()
-            .rev()
-            .enumerate()
-            .find(|(i, element)| {
-                let range = start_index..end_index;
-                if let ActiveFormattingElement::Element(element) = element {
-                    return range.contains(i) && element.element_tag_name() == Some(tag_name);
+    pub fn last_element_with_tag_name_before_marker(&self, tag_name: &str) -> Option<NodeRef<'a>> {
+        for element in self.elements.iter().rev() {
+            if matches!(element, ActiveFormattingElement::Marker) {
+                break;
+            }
+            if let ActiveFormattingElement::Element(element) = element {
+                if element.is_element_with_tag(tag_name) {
+                    return Some(*element);
                 }
-                false
-            })
-            .map(|element| *element.1)
+            }
+        }
+        None
     }
 
-    pub fn contains(&self, target: ActiveFormattingElement<'a>) -> bool {
+    pub fn contains(&self, target: NodeRef<'a>) -> bool {
         self.elements
             .iter()
             .find(|element| {
-                if matches!(target, ActiveFormattingElement::Marker) {
-                    return matches!(element, ActiveFormattingElement::Marker);
-                }
-
                 if let ActiveFormattingElement::Element(element) = element {
-                    if let ActiveFormattingElement::Element(target) = target {
-                        return Node::are_same(element, target);
-                    }
+                    return *element == target;
                 }
                 false
             })

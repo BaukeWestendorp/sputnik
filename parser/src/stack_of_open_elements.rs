@@ -70,6 +70,18 @@ impl<'a> StackOfOpenElements<'a> {
         }
     }
 
+    pub fn insert_immediately_below(&mut self, element: NodeRef<'a>, target: NodeRef<'a>) {
+        if let Some(index) = self.elements.iter().position(|e| e == &target) {
+            self.elements.insert(index + 1, element);
+        }
+    }
+
+    pub fn replace(&mut self, target: NodeRef<'a>, replacement: NodeRef<'a>) {
+        if let Some(index) = self.elements.iter().position(|e| e == &target) {
+            self.elements[index] = replacement;
+        }
+    }
+
     pub fn remove_element(&mut self, element: NodeRef<'a>) {
         if let Some(index) = self.elements.iter().position(|e| e == &element) {
             self.elements.remove(index);
@@ -86,6 +98,19 @@ impl<'a> StackOfOpenElements<'a> {
             }
         }
         None
+    }
+
+    pub fn topmost_special_node_below(&self, target: NodeRef<'a>) -> Option<NodeRef<'a>> {
+        let mut best = None;
+        for element in self.elements.iter().rev() {
+            if Node::are_same(element, target) {
+                break;
+            }
+            if element.is_special_tag() {
+                best = Some(*element);
+            }
+        }
+        best
     }
 
     pub fn contains(&self, target: NodeRef<'a>) -> bool {
@@ -125,6 +150,23 @@ impl<'a> StackOfOpenElements<'a> {
             if node.is_element_with_one_of_tags(list) {
                 return false;
             }
+            // SPEC: 4. Otherwise, set node to the previous entry in the stack of open elements and return to step 2.
+            //         (This will never fail, since the loop will always terminate in the
+            //         previous step if the top of the stack — an html element — is reached.)
+        }
+        unreachable!();
+    }
+
+    pub fn has_element_in_scope(&self, target: NodeRef<'a>) -> bool {
+        // SPEC: 1. Initialize node to be the current node (the bottommost node of the stack).
+        for node in self.elements.iter().rev() {
+            // SPEC: 2. If node is the target node, terminate in a match state.
+            if Node::are_same(&node, target) {
+                return true;
+            }
+            // SPEC: 3. Otherwise, if node is one of the element types in list, terminate in a failure state.
+            // FIXME: Implement
+
             // SPEC: 4. Otherwise, set node to the previous entry in the stack of open elements and return to step 2.
             //         (This will never fail, since the loop will always terminate in the
             //         previous step if the top of the stack — an html element — is reached.)

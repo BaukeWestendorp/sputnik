@@ -1,8 +1,6 @@
 use std::cell::RefCell;
 
-use crate::list_of_active_formatting_elements::{
-    ActiveFormattingElement, ListOfActiveFormattingElements,
-};
+use crate::list_of_active_formatting_elements::ListOfActiveFormattingElements;
 use crate::stack_of_open_elements::StackOfOpenElements;
 use dom::arena::{Arena, NodeRef};
 use dom::node::{CharacterDataVariant, Node, NodeData};
@@ -380,6 +378,7 @@ impl<'a> Parser<'a> {
             document,
             NodeData::Element {
                 name,
+                namespace: None,
                 attributes: RefCell::new(attributes),
             },
         );
@@ -482,7 +481,6 @@ impl<'a> Parser<'a> {
     ) -> NodeRef<'a> {
         // SPEC: 1. Let the adjusted insertion location be the appropriate place for inserting a node.
         let adjusted_insertion_location = self.appropriate_place_for_inserting_node(None);
-        // eprintln!("{:#?}", adjusted_insertion_location);
 
         // SPEC: 2. Let element be the result of creating an element for the token in the given namespace,
         //          with the intended parent being the element in which the adjusted insertion location finds itself.
@@ -1269,8 +1267,10 @@ impl<'a> Parser<'a> {
                 {
                     // SPEC: then this is a parse error;
                     log_parser_error!();
+
                     //       run the adoption agency algorithm for the token,
                     self.run_the_adoption_agency_algorithm_for_token(token);
+
                     // SPEC: then remove that element from the list of active formatting
                     //       elements and the stack of open elements
                     //       if the adoption agency algorithm didn't already remove it
@@ -1457,12 +1457,10 @@ impl<'a> Parser<'a> {
         // SPEC: 2. If the current node is an HTML element whose tag name is subject,
         //          and the current node is not in the list of active formatting elements,
         //          then pop the current node off the stack of open elements and return.
-        if self.current_node_is_one_of_elements_with_tag(&[&subject])
-            && self
+        if self.current_node().unwrap().is_element_with_tag(&subject)
+            && !self
                 .list_of_active_formatting_elements
-                .contains(ActiveFormattingElement::Element(
-                    self.current_node().unwrap(),
-                ))
+                .contains(self.current_node().unwrap())
         {
             self.stack_of_open_elements.pop_current_element();
             return;
@@ -1485,22 +1483,14 @@ impl<'a> Parser<'a> {
             //     * has the tag name subject.
             let formatting_element = self
                 .list_of_active_formatting_elements
-                .last_element_that_is_between_index_and_has_tag_name(
-                    self.list_of_active_formatting_elements
-                        .last_marker_index()
-                        .unwrap_or(0),
-                    self.list_of_active_formatting_elements.len(),
-                    &subject,
-                );
+                .last_element_with_tag_name_before_marker(&subject);
+
             // SPEC: If there is no such element, then return and instead act as described in the "any other end tag" entry above.
             if formatting_element.is_none() {
                 self.in_body_any_other_end_tag(token);
                 return;
             }
-            let formatting_element = match formatting_element.unwrap() {
-                ActiveFormattingElement::Marker => panic!("Should not be a marker!"),
-                ActiveFormattingElement::Element(element) => element,
-            };
+            let formatting_element = formatting_element.unwrap();
 
             // SPEC: 4.4 If formatting element is not in the stack of open elements,
             if self.stack_of_open_elements.contains(formatting_element) {
@@ -1513,24 +1503,176 @@ impl<'a> Parser<'a> {
                 return;
             }
 
-            todo!()
             // SPEC: 4.5 If formatting element is in the stack of open elements, but the element is not in scope,
-            //           then this is a parse error; return.
-            // SPEC: 4.6 If formatting element is not the current node, this is a parse error. (But do not return.)
+            if !self
+                .stack_of_open_elements
+                .has_element_in_scope(formatting_element)
+            {
+                // SPEC: then this is a parse error; return.
+                log_parser_error!();
+                return;
+            }
+
+            // SPEC: 4.6 If formatting element is not the current node,
+            if !Node::are_same(formatting_element, self.current_node().unwrap()) {
+                // SPEC: this is a parse error. (But do not return.)
+                log_parser_error!();
+            }
+
             // SPEC: 4.7 Let furthest block be the topmost node in the stack of open elements that is
             //           lower in the stack than formatting element, and is an element in the special category.
             //           There might not be one.
+            let furthest_block = self
+                .stack_of_open_elements
+                .topmost_special_node_below(formatting_element);
+
             // SPEC: 4.8 If there is no furthest block, then the UA must first pop all the nodes from
-            //           the bottom of the stack of open elements, from the current node up to and including
-            //           formatting element, then remove formatting element from the list of active
-            //           formatting elements, and finally return.
+            //           the bottom of the stack of open elements, from the current node up to and including formatting element,
+            if furthest_block.is_none() {
+                while !Node::are_same(formatting_element, self.current_node().unwrap()) {
+                    self.stack_of_open_elements.pop_current_element();
+                }
+                self.list_of_active_formatting_elements.pop();
+                // SPEC: then remove formatting element from the list of active formatting elements,
+                self.list_of_active_formatting_elements
+                    .remove(formatting_element);
+                // SPEC: and finally return.
+                return;
+            }
+            let furthest_block = furthest_block.unwrap();
+
             // SPEC: 4.9 Let common ancestor be the element immediately above formatting element in
             //           the stack of open elements.
+            let common_ancestor = self
+                .stack_of_open_elements
+                .element_immediately_above(formatting_element);
+
             // SPEC: 4.10 Let a bookmark note the position of formatting element in the list of
             //           active formatting elements relative to the elements on either side of it in the list.
+            let mut bookmark = self
+                .list_of_active_formatting_elements
+                .first_index_of(formatting_element)
+                .unwrap();
+
             // SPEC: 4.11 Let node and last node be furthest block.
+            let mut node = furthest_block;
+            let mut last_node = furthest_block;
+
+            let node_above_node = self.stack_of_open_elements.element_immediately_above(node);
+
             // SPEC: 4.12 Let inner loop counter be 0.
+            let mut inner_loop_count = 0;
+
             // SPEC: 4.13 While true:
+            loop {
+                // SPEC: 4.13.1 Increment inner loop counter by 1.
+                inner_loop_count += 1;
+
+                // SPEC: 4.13.2 Let node be the element immediately above node in the stack of open elements,
+                //              or if node is no longer in the stack of open elements
+                //              (e.g. because it got removed by this algorithm),
+                //              the element that was immediately above node
+                //              in the stack of open elements before node was removed.
+                if let Some(node_above_node) = node_above_node {
+                    node = node_above_node;
+                }
+
+                // SPEC: 4.13.3 If node is formatting element, then break.
+                if Node::are_same(node, formatting_element) {
+                    break;
+                }
+
+                // SPEC: 4.13.4 If inner loop counter is greater than 3
+                //              and node is in the list of active formatting elements,
+                //              then remove node from the list of active formatting elements.
+                if inner_loop_count > 3 && self.list_of_active_formatting_elements.contains(node) {
+                    self.list_of_active_formatting_elements.remove(node);
+                }
+
+                // SPEC: 4.13.5 If node is not in the list of active formatting elements,
+                //              then remove node from the stack of open elements and continue.
+                if !self.list_of_active_formatting_elements.contains(node) {
+                    self.stack_of_open_elements.remove_element(node);
+                    continue;
+                }
+
+                // SPEC: 4.13.6 Create an element for the token for which the element node was created,
+                //              in the HTML namespace, with common ancestor as the intended parent;
+                let new_element = self.create_element_for_token(token, common_ancestor.unwrap());
+
+                // SPEC: replace the entry for node in the list of active
+                //       formatting elements with an entry for the new element,
+                self.list_of_active_formatting_elements
+                    .replace(node, new_element);
+
+                // SPEC: replace the entry for node in the stack of open elements
+                //       with an entry for the new element,
+                self.stack_of_open_elements.replace(node, new_element);
+
+                // and let node be the new element.
+                node = new_element;
+
+                // SPEC: 4.13.7 If last node is furthest block,
+                //              then move the aforementioned bookmark to be immediately
+                //              after the new node in the list of active formatting elements.
+                if Node::are_same(last_node, furthest_block) {
+                    bookmark = self
+                        .list_of_active_formatting_elements
+                        .first_index_of(node)
+                        .unwrap()
+                        + 1
+                }
+
+                // SPEC: 4.13.8 Append last node to node.
+                node.append(last_node);
+
+                // SPEC: 4.13.9 Set last node to node.
+                last_node = node;
+            }
+
+            // SPEC: 14. Insert whatever last node ended up being in the previous step at the
+            //           appropriate place for inserting a node,
+            //           but using common ancestor as the override target.
+            let adjusted_insertion_location =
+                self.appropriate_place_for_inserting_node(common_ancestor);
+            let child = match adjusted_insertion_location.child {
+                InsertionLocation::BeforeElement(element) => Some(element),
+                InsertionLocation::AfterLastChildIfAny => None,
+            };
+            adjusted_insertion_location
+                .parent
+                .insert_before(last_node, child);
+
+            // SPEC: 15. Create an element for the token for which formatting element was created,
+            //           in the HTML namespace,
+            //           with furthest block as the intended parent.
+            let new_element = self.create_element_for_token(token, furthest_block);
+
+            // SPEC: 16. Take all of the child nodes of furthest block
+            //           and append them to the element created in the last step.
+            for child in furthest_block.children().iter() {
+                new_element.append(child);
+            }
+
+            // SPEC: 17. Append that new element to furthest block.
+            furthest_block.append(new_element);
+
+            // SPEC: 18. Remove formatting element from the list of active formatting elements,
+            self.list_of_active_formatting_elements
+                .remove(formatting_element);
+            // SPEC: and insert the new element into the list of active formatting elements
+            //       at the position of the aforementioned bookmark.
+            self.list_of_active_formatting_elements
+                .insert(bookmark, new_element);
+
+            // SPEC: 19. Remove formatting element from the stack of open elements,
+            self.stack_of_open_elements
+                .remove_element(formatting_element);
+
+            // SPEC: and insert the new element into the stack of open elements
+            //       immediately below the position of furthest block in that stack.
+            self.stack_of_open_elements
+                .insert_immediately_below(new_element, furthest_block);
         }
     }
 
