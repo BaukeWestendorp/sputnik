@@ -86,15 +86,12 @@ impl<'a> ListOfActiveFormattingElements<'a> {
     }
 
     pub fn contains(&self, target: NodeRef<'a>) -> bool {
-        self.elements
-            .iter()
-            .find(|element| {
-                if let ActiveFormattingElement::Element(element) = element {
-                    return *element == target;
-                }
-                false
-            })
-            .is_some()
+        self.elements.iter().any(|element| {
+            if let ActiveFormattingElement::Element(element) = element {
+                return *element == target;
+            }
+            false
+        })
     }
 
     pub fn contains_element_between(&self, start: Position, end: Position, tag_name: &str) -> bool {

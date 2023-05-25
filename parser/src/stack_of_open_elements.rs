@@ -116,8 +116,7 @@ impl<'a> StackOfOpenElements<'a> {
     pub fn contains(&self, target: NodeRef<'a>) -> bool {
         self.elements
             .iter()
-            .find(|element| Node::are_same(element, target))
-            .is_some()
+            .any(|element| Node::are_same(element, target))
     }
 
     pub fn contains_one_of_tags(&self, tags: &[&str]) -> bool {
@@ -161,7 +160,7 @@ impl<'a> StackOfOpenElements<'a> {
         // SPEC: 1. Initialize node to be the current node (the bottommost node of the stack).
         for node in self.elements.iter().rev() {
             // SPEC: 2. If node is the target node, terminate in a match state.
-            if Node::are_same(&node, target) {
+            if Node::are_same(node, target) {
                 return true;
             }
             // SPEC: 3. Otherwise, if node is one of the element types in list, terminate in a failure state.

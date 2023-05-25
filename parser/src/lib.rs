@@ -99,7 +99,7 @@ impl<'a> AdjustedInsertionLocation<'a> {
             InsertionLocation::BeforeElement(e) => Some(e),
             InsertionLocation::AfterLastChildIfAny => None,
         };
-        self.parent.insert_before(&element, child);
+        self.parent.insert_before(element, child);
     }
 }
 

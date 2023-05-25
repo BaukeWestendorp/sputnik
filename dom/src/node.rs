@@ -81,7 +81,7 @@ impl PartialEq for Node<'_> {
                 .into_inner()
                 .iter()
                 .zip(other.children.clone().into_inner().iter())
-                .all(|(a, b)| Node::are_same(*a, *b))
+                .all(|(a, b)| Node::are_same(a, b))
     }
 }
 
