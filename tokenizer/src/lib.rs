@@ -412,7 +412,30 @@ impl Tokenizer {
                     }
                 }
                 State::RawText => todo!(),
-                State::ScriptData => todo!(),
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#script-data-state
+                State::ScriptData => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        on!('<') => {
+                            // SPEC: Switch to the script data less-than sign state.
+                            self.switch_to(State::ScriptDataLessThanSign);
+                        }
+                        on_null!() => {
+                            // SPEC: This is an unexpected-null-character parse error.
+
+                            // SPEC: Emit a U+FFFD REPLACEMENT CHARACTER character token.
+                            self.emit_token(Token::Character { data: '\u{FFFD}' });
+                        }
+                        on_eof!() => {
+                            // SPEC: Emit an end-of-file token.
+                            self.emit_token(Token::EndOfFile);
+                        }
+                        on_anything_else!(character) => {
+                            // SPEC: Emit the current input character as a character token.
+                            self.emit_token(Token::Character { data: character });
+                        }
+                    }
+                }
                 State::PlainText => todo!(),
                 // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#tag-open-state
                 State::TagOpen => {
@@ -605,8 +628,10 @@ impl Tokenizer {
                         }
                         on_ascii_lower_alpha!(character) => {
                             // SPEC: Append the current input character to the current tag token's tag name.
-                            if let Some(Token::StartTag { .. }) = &mut self.current_building_token {
-                                todo!()
+                            if let Some(Token::StartTag { name, .. }) =
+                                &mut self.current_building_token
+                            {
+                                name.push(character)
                             }
                             if let Some(Token::EndTag { name, .. }) =
                                 &mut self.current_building_token
@@ -625,9 +650,135 @@ impl Tokenizer {
                 State::RawTextLessThanSign => todo!(),
                 State::RawTextEndTagOpen => todo!(),
                 State::RawTextEndTagName => todo!(),
-                State::ScriptDataLessThanSign => todo!(),
-                State::ScriptDataEndTagOpen => todo!(),
-                State::ScriptDataEndTagName => todo!(),
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#script-data-state
+                State::ScriptDataLessThanSign => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        on!('/') => {
+                            // SPEC: Set the temporary buffer to the empty string.
+                            self.temporary_buffer.clear();
+                            // SPEC: Switch to the script data end tag open state.
+                            self.switch_to(State::ScriptDataEndTagOpen);
+                        }
+                        on!('!') => {
+                            // SPEC: Switch to the script data escape start state.
+                            self.switch_to(State::ScriptDataEscapeStart);
+                            // Emit a U+003C LESS-THAN SIGN character token
+                            self.emit_token(Token::Character { data: '<' });
+                            // and a U+0021 EXCLAMATION MARK character token.
+                            self.emit_token(Token::Character { data: '!' });
+                        }
+                        on_anything_else!() | None => {
+                            // SPEC: Emit a U+003C LESS-THAN SIGN character token.
+                            self.emit_token(Token::Character { data: '<' });
+                            // Reconsume in the script data state.
+                            self.reconsume_in(State::ScriptData);
+                        }
+                    }
+                }
+                // SPECLINK: e script data end tag name state.
+                State::ScriptDataEndTagOpen => {
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        on_ascii_alpha!() => {
+                            // SPEC: Create a new end tag token, set its tag name to the empty string.
+                            self.create_new_token(Token::EndTag {
+                                name: String::new(),
+                                self_closing: false,
+                                attributes: vec![],
+                            });
+                            // SPEC: Reconsume in the script data end tag name state.
+                            self.reconsume_in(State::ScriptDataEndTagName);
+                        }
+                        on_anything_else!() | None => {
+                            // SPEC: Emit a U+003C LESS-THAN SIGN character token
+                            self.emit_token(Token::Character { data: '<' });
+                            // and a U+002F SOLIDUS character token.
+                            self.emit_token(Token::Character { data: '/' });
+                            // Reconsume in the script data state.
+                            self.reconsume_in(State::ScriptData);
+                        }
+                    }
+                }
+                // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#script-data-end-tag-name-state
+                State::ScriptDataEndTagName => {
+                    macro_rules! anything_else {
+                        () => {
+                            // SPEC: Emit a U+003C LESS-THAN SIGN character token,
+                            self.emit_token(Token::Character { data: '<' });
+
+                            // SPEC: a U+002F SOLIDUS character token,
+                            self.emit_token(Token::Character { data: '/' });
+
+                            // SPEC: and a character token for each of the characters in the temporary buffer
+                            //       (in the order they were added to the buffer).
+                            for character in self.temporary_buffer.clone().chars() {
+                                self.emit_token(Token::Character { data: character });
+                            }
+
+                            // SPEC: Reconsume in the script data state.
+                            self.reconsume_in(State::ScriptData);
+                        };
+                    }
+
+                    self.consume_next_input_character();
+                    match self.current_input_character {
+                        on_whitespace!() => {
+                            // SPEC: If the current end tag token is an appropriate end tag token,
+                            if self.current_end_tag_token_is_an_appropriate_end_tag_token() {
+                                // SPEC: then switch to the before attribute name state.
+                                self.switch_to(State::BeforeAttributeName);
+                            } else {
+                                // SPEC: Otherwise, treat it as per the "anything else" entry below.
+                                anything_else!();
+                            }
+                        }
+                        on!('/') => {
+                            // SPEC: If the current end tag token is an appropriate end tag token,
+                            if self.current_end_tag_token_is_an_appropriate_end_tag_token() {
+                                // SPEC: then switch to the self-closing start tag state.
+                                self.switch_to(State::SelfClosingStartTag);
+                            } else {
+                                // SPEC: Otherwise, treat it as per the "anything else" entry below.
+                                anything_else!();
+                            }
+                        }
+                        on!('>') => {
+                            // SPEC: If the current end tag token is an appropriate end tag token,
+                            if self.current_end_tag_token_is_an_appropriate_end_tag_token() {
+                                // SPEC: then switch to the data state
+                                self.switch_to(State::Data);
+                                // SPEC: and emit the current tag token.
+                                self.emit_current_token();
+                            } else {
+                                // SPEC: Otherwise, treat it as per the "anything else" entry below.
+                                anything_else!();
+                            }
+                        }
+                        on_ascii_upper_alpha!() => {
+                            todo!();
+                        }
+                        on_ascii_lower_alpha!(character) => {
+                            // SPEC: Append the current input character to the current tag token's tag name.
+                            if let Some(Token::StartTag { name, .. }) =
+                                &mut self.current_building_token
+                            {
+                                name.push(character);
+                            }
+                            if let Some(Token::EndTag { name, .. }) =
+                                &mut self.current_building_token
+                            {
+                                name.push(character);
+                            }
+
+                            // SPEC: Append the current input character to the temporary buffer.
+                            self.temporary_buffer.push(character);
+                        }
+                        on_anything_else!() | None => {
+                            anything_else!();
+                        }
+                    }
+                }
                 State::ScriptDataEscapeStart => todo!(),
                 State::ScriptDataEscapeStartDash => todo!(),
                 State::ScriptDataEscaped => todo!(),

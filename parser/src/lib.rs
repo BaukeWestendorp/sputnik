@@ -896,7 +896,31 @@ impl<'a> Parser<'a> {
                 todo!()
             }
             Token::StartTag { name, .. } if name == "script" => {
-                todo!()
+                // SPEC: 1. Let the adjusted insertion location be the appropriate place for inserting a node.
+                let adjusted_insertion_location = self.appropriate_place_for_inserting_node(None);
+                // SPEC: 2. Create an element for the token in the HTML namespace,
+                //       with the intended parent being the element in which
+                //       the adjusted insertion location finds itself.
+                let element =
+                    self.create_element_for_token(token, adjusted_insertion_location.parent);
+                // SPEC: 3. FIXME: Set the element's parser document to the Document, and set the element's force async to false.
+                // SPEC: 4. FIXME: If the parser was created as part of the HTML fragment parsing algorithm,
+                //                 then set the script element's already started to true. (fragment case)
+                // SPEC: 5. FIXME: If the parser was invoked via the document.write() or document.writeln() methods,
+                //                 then optionally set the script element's already started to true.
+                //                 (For example, the user agent might use this clause to prevent execution
+                //                 of cross-origin scripts inserted via document.write() under slow network conditions,
+                //                 or when the page has already taken a long time to load.)
+                // SPEC: 6. Insert the newly created element at the adjusted insertion location.
+                adjusted_insertion_location.insert_element(element);
+                // SPEC: 7. Push the element onto the stack of open elements so that it is the new current node.
+                self.stack_of_open_elements.push(element);
+                // SPEC: 8. Switch the tokenizer to the script data state.
+                self.tokenizer.switch_to(tokenizer::State::ScriptData);
+                // SPEC: 9. Let the original insertion mode be the current insertion mode.
+                self.original_insertion_mode = self.insertion_mode;
+                // SPEC: 10. Switch the insertion mode to "text".
+                self.switch_insertion_mode_to(InsertionMode::Text);
             }
             Token::EndTag { name, .. } if name == "head" => {
                 // SPEC: Pop the current node (which will be the head element) off the stack of open elements.
@@ -1078,7 +1102,6 @@ impl<'a> Parser<'a> {
                 // SPEC: Process the token using the rules for the "in head" insertion mode.
                 self.process_token_using_the_rules_for(InsertionMode::InHead, token);
             }
-            Token::EndTag { name, .. } if name == "template" => todo!(),
             Token::StartTag { name, .. } if name == "body" => todo!(),
             Token::StartTag { name, .. } if name == "frameset" => todo!(),
             Token::EndOfFile => {
@@ -1811,7 +1834,35 @@ impl<'a> Parser<'a> {
                 self.switch_insertion_mode_to(self.original_insertion_mode);
                 self.reprocess_token(token);
             }
-            Token::EndTag { name, .. } if name == "script" => todo!(),
+            Token::EndTag { name, .. } if name == "script" => {
+                // SPEC: If the active speculative HTML parser is null and the JavaScript execution context stack is empty, then perform a microtask checkpoint.
+                // FIXME: Implement
+
+                // SPEC: Let script be the current node (which will be a script element).
+                // FIXME: Implement
+                // SPEC: Pop the current node off the stack of open elements.
+                self.stack_of_open_elements.pop_current_element();
+                // SPEC: Switch the insertion mode to the original insertion mode.
+                self.switch_insertion_mode_to(self.original_insertion_mode);
+                // SPEC: Let the old insertion point have the same value as the current insertion point.
+                //       Let the insertion point be just before the next input character.
+                // FIXME: Implement
+                // SPEC: Increment the parser's script nesting level by one.
+                // FIXME: Implement
+                // SPEC: If the active speculative HTML parser is null, then prepare the script element script.
+                //       This might cause some script to execute, which might cause new characters to
+                //       be inserted into the tokenizer, and might cause the tokenizer
+                //       to output more tokens, resulting in a reentrant invocation of the parser.
+                // FIXME: Implement
+                // SPEC: Decrement the parser's script nesting level by one.
+                //       If the parser's script nesting level is zero,
+                //       then set the parser pause flag to false.
+                // SPEC: Let the insertion point have the value of the old insertion point.
+                //       (In other words, restore the insertion point to its previous value.
+                //       This value might be the "undefined" value.)
+                // SPEC: At this stage, if the pending parsing-blocking script is not null, then:
+                // FIXME: Implement
+            }
             _ => {
                 // SPEC: Pop the current node off the stack of open elements.
                 self.stack_of_open_elements.pop_current_element();
