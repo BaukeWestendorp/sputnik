@@ -36,10 +36,6 @@ impl<'a> ListOfActiveFormattingElements<'a> {
         self.elements.push(ActiveFormattingElement::Marker);
     }
 
-    pub fn pop(&mut self) {
-        self.elements.pop();
-    }
-
     pub fn first_index_of(&self, target: NodeRef<'a>) -> Option<usize> {
         self.elements
             .iter()

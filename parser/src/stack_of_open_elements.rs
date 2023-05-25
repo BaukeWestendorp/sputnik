@@ -43,10 +43,6 @@ impl<'a> StackOfOpenElements<'a> {
         self.elements.first().copied()
     }
 
-    pub fn second_to_last(&self) -> Option<NodeRef<'a>> {
-        self.elements.get(self.elements.len() - 2).copied()
-    }
-
     pub fn is_empty(&self) -> bool {
         self.elements.is_empty()
     }

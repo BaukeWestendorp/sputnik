@@ -1705,7 +1705,7 @@ impl<'a> Parser<'a> {
             let formatting_element = formatting_element.unwrap();
 
             // SPEC: 4.4 If formatting element is not in the stack of open elements,
-            if self.stack_of_open_elements.contains(formatting_element) {
+            if !self.stack_of_open_elements.contains(formatting_element) {
                 // SPEC: then this is a parse error;
                 log_parser_error!();
                 // SPEC: remove the element from the list
@@ -1744,7 +1744,8 @@ impl<'a> Parser<'a> {
                 while !Node::are_same(formatting_element, self.current_node().unwrap()) {
                     self.stack_of_open_elements.pop_current_element();
                 }
-                self.list_of_active_formatting_elements.pop();
+                self.stack_of_open_elements.pop_current_element();
+
                 // SPEC: then remove formatting element from the list of active formatting elements,
                 self.list_of_active_formatting_elements
                     .remove(formatting_element);
