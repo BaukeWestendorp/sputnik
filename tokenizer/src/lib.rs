@@ -6,6 +6,17 @@ mod named_character_references;
 
 include!("macros.rs");
 
+macro_rules! log_current_token {
+    ($state:expr, $current_token:expr) => {
+        if std::env::var("TOKENIZER_LOGGING").is_ok() {
+            eprintln!(
+                "\x1b[34m[Tokenizer::State::{:?}] {:?}\x1b[0m",
+                $state, $current_token
+            );
+        }
+    };
+}
+
 #[allow(unused)]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
 pub enum State {
@@ -337,11 +348,7 @@ impl Tokenizer {
         }
 
         loop {
-            eprintln!(
-                "\x1b[34m[Tokenizer::State::{:?}] {:?}\x1b[0m",
-                self.state,
-                self.current_token()
-            );
+            log_current_token!(self.state, self.current_token());
 
             if self.token_emitted {
                 break;

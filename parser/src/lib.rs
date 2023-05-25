@@ -31,6 +31,17 @@ macro_rules! log_parser_error {
     };
 }
 
+macro_rules! log_current_process {
+    ($insertion_mode:expr, $token:expr) => {
+        if std::env::var("PARSER_LOGGING").is_ok() {
+            eprintln!(
+                "\x1b[32m[Parser::InsertionMode::{:?}] {:?}\x1b[0m",
+                $insertion_mode, $token
+            );
+        }
+    };
+}
+
 #[allow(unused)]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
 enum InsertionMode {
@@ -2155,10 +2166,7 @@ impl<'a> Parser<'a> {
         insertion_mode: InsertionMode,
         token: &mut Token,
     ) {
-        eprintln!(
-            "\x1b[32m[Parser::InsertionMode::{:?}] {:?}\x1b[0m",
-            insertion_mode, token
-        );
+        log_current_process!(insertion_mode, token);
 
         match insertion_mode {
             InsertionMode::Initial => self.handle_initial(token),
@@ -2189,10 +2197,7 @@ impl<'a> Parser<'a> {
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inforeign
     fn process_token_using_the_rules_for_foreign_content(&mut self, token: &mut Token) {
-        eprintln!(
-            "\x1b[32m[Parser::InsertionMode::{:?}] {:?}\x1b[0m",
-            self.insertion_mode, token
-        );
+        log_current_process!(self.insertion_mode, token);
 
         // SPEC: When the user agent is to apply the rules for parsing
         //       tokens in foreign content, the user agent must handle the token as follows:
