@@ -2,7 +2,7 @@ use std::cell::Cell;
 
 use tokenizer::Token;
 
-use crate::dom::Node;
+use crate::dom::{node, Node};
 use crate::namespace::Namespace;
 use crate::types::NodeRef;
 use crate::Parser;
@@ -157,6 +157,11 @@ impl<'a> Parser<'a> {
 
     // https://html.spec.whatwg.org/#insert-a-comment
     pub(crate) fn insert_comment(&'a self, _data: &str) {
+        todo!()
+    }
+
+    // https://html.spec.whatwg.org/#insert-a-comment
+    pub(crate) fn insert_comment_as_last_child_of(&'a self, _data: &str, _node: NodeRef<'a>) {
         todo!()
     }
 }
