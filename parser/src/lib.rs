@@ -89,6 +89,18 @@ impl<'a> Parser<'a> {
     fn process_token_in_foreign_context(&'a self, token: &Token) {
         log_current_process!(self.insertion_mode, token);
 
+        macro_rules! pop_invalid_elements {
+            () => {
+                // Parse error.
+                log_parser_error!();
+
+                // FIXME: While the current node is not a MathML text integration point, an HTML integration point, or an element in the HTML namespace, pop elements from the stack of open elements.
+
+                // Reprocess the token according to the rules given in the section corresponding to the current insertion mode in HTML content.
+                self.process_token_using_the_rules_for(self.insertion_mode.get(), token);
+            };
+        }
+
         match token {
             Token::Character { data } if data == &'\u{0000}' => {
                 // Parse error. Insert a U+FFFD REPLACEMENT CHARACTER character.
@@ -164,9 +176,11 @@ impl<'a> Parser<'a> {
                         attr.name == "color" || attr.name == "face" || attr.name == "size"
                     })) =>
             {
-                todo!()
+                pop_invalid_elements!();
             }
-            Token::EndTag { name, .. } if name == "br" || name == "P" => todo!(),
+            Token::EndTag { name, .. } if name == "br" || name == "P" => {
+                pop_invalid_elements!();
+            }
             Token::StartTag { .. } => todo!(),
             Token::EndTag { name, .. } if name == "script" => {
                 // FIXME: if the current node is an SVG script element
@@ -179,7 +193,7 @@ impl<'a> Parser<'a> {
                 // 2. If node's tag name, converted to ASCII lowercase, is not the same as the tag name of the token, then this is a parse error.
                 if let Some(tag_name) = node.element_tag_name() {
                     if !tag_name.eq_ignore_ascii_case(&token.tag_name().unwrap()) {
-                        todo!();
+                        log_parser_error!();
                     }
                 }
 
