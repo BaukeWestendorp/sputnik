@@ -25,23 +25,17 @@ impl<'a> ListOfActiveFormattingElements<'a> {
         }
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#reconstruct-the-active-formatting-elements
+    // https://html.spec.whatwg.org/multipage/parsing.html#reconstruct-the-active-formatting-elements
     pub fn reconstruct_if_any(&self) {
         // FIXME: Implement
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#push-onto-the-list-of-active-formatting-elements
+    //  https://html.spec.whatwg.org/multipage/parsing.html#push-onto-the-list-of-active-formatting-elements
     pub fn push_element(&self, element: NodeRef<'a>) {
         // FIXME: Implement Noah's Ark clause.
         self.elements
             .borrow_mut()
             .push(ActiveFormattingElement::Element(element));
-    }
-
-    pub fn insert_marker_at_end(&self) {
-        self.elements
-            .borrow_mut()
-            .push(ActiveFormattingElement::Marker);
     }
 
     pub fn first_index_of(&self, target: NodeRef<'a>) -> Option<usize> {

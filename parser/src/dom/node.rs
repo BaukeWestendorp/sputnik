@@ -156,7 +156,9 @@ impl<'a> Node<'a> {
         }
     }
 
+    // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-descendant
     pub fn shadow_including_inclusive_descendants(&'a self) -> Vec<NodeRef<'a>> {
+        // FIXME: Implement properly.
         self.child_nodes().to_owned()
     }
 }

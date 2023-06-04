@@ -269,16 +269,12 @@ impl<'a> Parser<'a> {
             Token::StartTag { name, .. } if name == "body" => todo!(),
             Token::StartTag { name, .. } if name == "frameset" => todo!(),
             Token::EndOfFile => {
-                // If the stack of template insertion modes is not empty,
-                //       then process the token using the rules for the "in template" insertion mode.
+                // If the stack of template insertion modes is not empty, then process the token using the rules for the "in template" insertion mode.
                 // FIXME: Implement
 
                 // Otherwise, follow these steps:
 
-                // If there is a node in the stack of open elements that is not either a dd element, a dt element,
-                //       an li element, an optgroup element, an option element, a p element, an rb element, an rp element,
-                //       an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element,
-                //       a thead element, a tr element, the body element, or the html element, then this is a parse error.
+                // If there is a node in the stack of open elements that is not either a dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element, an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element, a thead element, a tr element, the body element, or the html element, then this is a parse error.
                 if !self.open_elements.contains_one_of_tags(INVALID_EOF_TAGS) {
                     log_parser_error!();
                 };
@@ -297,10 +293,7 @@ impl<'a> Parser<'a> {
                     return;
                 }
 
-                // Otherwise, if there is a node in the stack of open elements that is not either a
-                //       dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element,
-                //       an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element,
-                //       a thead element, a tr element, the body element, or the html element, then this is a parse error.
+                // Otherwise, if there is a node in the stack of open elements that is not either a dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element, an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element, a thead element, a tr element, the body element, or the html element, then this is a parse error.
                 if !self.open_elements.contains_one_of_tags(INVALID_EOF_TAGS) {
                     log_parser_error!();
                 }
@@ -309,8 +302,7 @@ impl<'a> Parser<'a> {
                 self.switch_insertion_mode_to(InsertionMode::AfterBody);
             }
             Token::EndTag { name, .. } if name == "html" => {
-                // 1. If the stack of open elements does not have a body element in scope,
-                //          this is a parse error; ignore the token.
+                // 1. If the stack of open elements does not have a body element in scope, this is a parse error; ignore the token.
                 if !self
                     .open_elements
                     .has_element_with_tag_name_in_scope("body")
@@ -318,11 +310,7 @@ impl<'a> Parser<'a> {
                     log_parser_error!();
                     return;
                 }
-                // 2. Otherwise, if there is a node in the stack of open elements that is not either a
-                //          dd element, a dt element, an li element, an optgroup element, an option element,
-                //          a p element, an rb element, an rp element, an rt element, an rtc element, a tbody element,
-                //          a td element, a tfoot element, a th element, a thead element, a tr element,
-                //          the body element, or the html element, then this is a parse error.
+                // 2. Otherwise, if there is a node in the stack of open elements that is not either a dd element, a dt element, an li element, an optgroup element, an option element, a p element, an rb element, an rp element, an rt element, an rtc element, a tbody element, a td element, a tfoot element, a th element, a thead element, a tr element, the body element, or the html element, then this is a parse error.
 
                 // 3. Switch the insertion mode to "after body".
                 self.switch_insertion_mode_to(InsertionMode::AfterBody);
@@ -378,8 +366,7 @@ impl<'a> Parser<'a> {
             }
             Token::StartTag { name, .. } if name == "pre" || name == "listing" => todo!(),
             Token::StartTag { name, .. } if name == "form" => {
-                // If the form element pointer is not null, and there is no template element
-                //       on the stack of open elements,
+                // If the form element pointer is not null, and there is no template element on the stack of open elements,
                 if self.form_element.get().is_some()
                     && self.open_elements.contains_one_of_tags(&["template"])
                 {
@@ -483,8 +470,7 @@ impl<'a> Parser<'a> {
                     || name == "summary"
                     || name == "ul" =>
             {
-                // If the stack of open elements does not have an element in scope that is
-                //       an HTML element with the same tag name as that of the token,
+                // If the stack of open elements does not have an element in scope that is an HTML element with the same tag name as that of the token,
                 if self.open_elements.has_element_with_tag_name_in_scope(name) {
                     // then this is a parse error; ignore the token.
                     log_parser_error!();
@@ -503,8 +489,7 @@ impl<'a> Parser<'a> {
                     // then this is a parse error.
                     log_parser_error!("Found closing tag, but current node is not an HTML element with the same tag name.");
                 }
-                // 3. Pop elements from the stack of open elements until an HTML element with
-                //          the same tag name as the token has been popped from the stack.
+                // 3. Pop elements from the stack of open elements until an HTML element with the same tag name as the token has been popped from the stack.
                 self.open_elements
                     .pop_elements_until_element_has_been_popped(name);
             }
@@ -540,8 +525,7 @@ impl<'a> Parser<'a> {
                 }
             }
             Token::EndTag { name, .. } if name == "p" => {
-                // If the stack of open elements does not have a p element in button scope, then this is a parse error;
-                //       insert an HTML element for a "p" start tag token with no attributes.
+                // If the stack of open elements does not have a p element in button scope, then this is a parse error; insert an HTML element for a "p" start tag token with no attributes.
                 if !self
                     .open_elements
                     .has_element_with_tag_name_in_button_scope("p")
@@ -559,8 +543,7 @@ impl<'a> Parser<'a> {
                 self.close_a_p_element();
             }
             Token::EndTag { name, .. } if name == "li" => {
-                // If the stack of open elements does not have an li element in list item scope,
-                //       then this is a parse error; ignore the token.
+                // If the stack of open elements does not have an li element in list item scope, then this is a parse error; ignore the token.
                 if self
                     .open_elements
                     .has_element_with_tag_name_in_list_item_scope("li")
@@ -603,9 +586,7 @@ impl<'a> Parser<'a> {
             Token::StartTag { name, .. } if name == "a" => {
                 use super::list_of_active_formatting_elements::Position;
 
-                // If the list of active formatting elements contains an a element between
-                //       the end of the list and the last marker on the list
-                //        (or the start of the list if there is no marker on the list),
+                // If the list of active formatting elements contains an a element between the end of the list and the last marker on the list (or the start of the list if there is no marker on the list),
                 if self.active_formatting_elements.contains_element_between(
                     Position::End,
                     Position::LastMarkerOrElseStart,
@@ -614,13 +595,10 @@ impl<'a> Parser<'a> {
                     // then this is a parse error;
                     log_parser_error!();
 
-                    //       run the adoption agency algorithm for the token,
+                    // run the adoption agency algorithm for the token,
                     self.run_adoption_agency_algorithm_for_token(token);
 
-                    // then remove that element from the list of active formatting
-                    //       elements and the stack of open elements
-                    //       if the adoption agency algorithm didn't already remove it
-                    //       (it might not have if the element is not in table scope).
+                    // then remove that element from the list of active formatting elements and the stack of open elements if the adoption agency algorithm didn't already remove it (it might not have if the element is not in table scope).
                     todo!()
                 }
 
@@ -684,8 +662,7 @@ impl<'a> Parser<'a> {
                 todo!()
             }
             Token::StartTag { name, .. } if name == "table" => {
-                // If the Document is not set to quirks mode, and the stack of open elements
-                //       has a p element in button scope, then close a p element.
+                // If the Document is not set to quirks mode, and the stack of open elements has a p element in button scope, then close a p element.
                 // FIXME: Implement
                 // Insert an HTML element for the token.
                 self.insert_html_element_for_token(token);
@@ -727,8 +704,7 @@ impl<'a> Parser<'a> {
                 // Acknowledge the token's self-closing flag, if it is set.
                 token.acknowledge_self_closing_flag_if_set();
 
-                // If the token does not have an attribute with the name "type",
-                //       or if it does, but that attribute's value is not an ASCII case-insensitive match for the string "hidden",
+                // If the token does not have an attribute with the name "type", or if it does, but that attribute's value is not an ASCII case-insensitive match for the string "hidden",
                 if let Token::StartTag { attributes, .. } = token {
                     let type_attr = attributes.iter().find(|attr| attr.name == "type");
                     if type_attr.is_none()
@@ -786,44 +762,44 @@ impl<'a> Parser<'a> {
     }
 
     fn in_body_any_other_end_tag(&self, token: &Token) {
-        // SPEC: 1. Initialize node to be the current node (the bottommost node of the stack).
+        // 1. Initialize node to be the current node (the bottommost node of the stack).
         for node in self.open_elements.elements.borrow().iter().rev() {
-            // SPEC: 2. Loop: If node is an HTML element with the same tag name as the token, then:
+            // 2. Loop: If node is an HTML element with the same tag name as the token, then:
             let token_tag_name = token.tag_name().expect("token should be EndTag");
             if node.is_element_with_tag(&token_tag_name) {
-                // SPEC: 2.1. Generate implied end tags, except for HTML elements with the same tag name as the token.
+                // 2.1. Generate implied end tags, except for HTML elements with the same tag name as the token.
                 self.generate_implied_end_tags_except_for(Some(&token_tag_name));
-                // SPEC: 2.2. If node is not the current node, then this is a parse error.
+                // 2.2. If node is not the current node, then this is a parse error.
                 if *node == self.open_elements.current_node().unwrap() {
                     log_parser_error!();
                 }
-                // SPEC: 2.3. Pop all the nodes from the current node up to node, including node,
+                // 2.3. Pop all the nodes from the current node up to node, including node,
                 while *node == self.open_elements.current_node().unwrap() {
                     self.open_elements.pop();
                 }
-                // SPEC: then stop these steps.
+                // then stop these steps.
                 break;
             } else {
-                // SPEC: 3. Otherwise, if node is in the special category,
+                // 3. Otherwise, if node is in the special category,
                 if node.is_element_with_one_of_tags(stack_of_open_elements::SPECIAL_TAGS) {
-                    // SPEC: then this is a parse error; ignore the token,
+                    // then this is a parse error; ignore the token,
                     log_parser_error!();
-                    // SPEC: and return.
+                    // and return.
                     return;
                 }
 
-                // SPEC: 4. Set node to the previous entry in the stack of open elements.
-                // SPEC: 5 Return to the step labeled loop.
+                // 4. Set node to the previous entry in the stack of open elements.
+                // 5 Return to the step labeled loop.
             }
         }
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#close-a-p-element
+    // https://html.spec.whatwg.org/multipage/parsing.html#close-a-p-element
     fn close_a_p_element(&self) {
-        // SPEC: Generate implied end tags, except for p elements.
+        // Generate implied end tags, except for p elements.
         self.generate_implied_end_tags_except_for(Some("p"));
 
-        // SPEC: If the current node is not a p element, then this is a parse error.
+        // If the current node is not a p element, then this is a parse error.
         if !self
             .open_elements
             .current_node()
@@ -833,19 +809,17 @@ impl<'a> Parser<'a> {
             log_parser_error!();
         }
 
-        // SPEC: Pop elements from the stack of open elements until a p element has been popped from the stack.
+        // Pop elements from the stack of open elements until a p element has been popped from the stack.
         self.open_elements
             .pop_elements_until_element_has_been_popped("p");
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#adoption-agency-algorithm
+    // https://html.spec.whatwg.org/multipage/parsing.html#adoption-agency-algorithm
     fn run_adoption_agency_algorithm_for_token(&'a self, token: &Token) {
-        // SPEC: 1. Let subject be token's tag name.
+        // 1. Let subject be token's tag name.
         let subject = token.tag_name().expect("token should be EndTag");
 
-        // SPEC: 2. If the current node is an HTML element whose tag name is subject,
-        //          and the current node is not in the list of active formatting elements,
-        //          then pop the current node off the stack of open elements and return.
+        // 2. If the current node is an HTML element whose tag name is subject, and the current node is not in the list of active formatting elements, then pop the current node off the stack of open elements and return.
         if self
             .open_elements
             .current_node()
@@ -859,151 +833,136 @@ impl<'a> Parser<'a> {
             return;
         }
 
-        // SPEC: 3. Let outer loop counter be 0.
+        // 3. Let outer loop counter be 0.
         let mut outer_loop_counter = 0;
 
-        // SPEC: 4. While true:
+        // 4. While true:
         loop {
-            // SPEC: 4.1 If outer loop counter is greater than or equal to 8, then return.
+            // 4.1 If outer loop counter is greater than or equal to 8, then return.
             if outer_loop_counter >= 8 {
                 return;
             }
 
-            // SPEC: 4.2 Increment outer loop counter by 1.
+            // 4.2 Increment outer loop counter by 1.
             outer_loop_counter += 1;
-            // SPEC: 4.3 Let formatting element be the last element in the list of active formatting elements that:
+            // 4.3 Let formatting element be the last element in the list of active formatting elements that:
             //     * is between the end of the list and the last marker in the list, if any, or the start of the list otherwise, and
             //     * has the tag name subject.
             let formatting_element = self
                 .active_formatting_elements
                 .last_element_with_tag_name_before_marker(&subject);
 
-            // SPEC: If there is no such element, then return and instead act as described in the "any other end tag" entry above.
+            // If there is no such element, then return and instead act as described in the "any other end tag" entry above.
             if formatting_element.is_none() {
                 self.in_body_any_other_end_tag(token);
                 return;
             }
             let formatting_element = formatting_element.unwrap();
 
-            // SPEC: 4.4 If formatting element is not in the stack of open elements,
+            // 4.4 If formatting element is not in the stack of open elements,
             if !self.open_elements.contains(formatting_element) {
-                // SPEC: then this is a parse error;
+                // then this is a parse error;
                 log_parser_error!();
-                // SPEC: remove the element from the list
+                // remove the element from the list
                 self.active_formatting_elements.remove(formatting_element);
-                // SPEC: and return.
+                // and return.
                 return;
             }
 
-            // SPEC: 4.5 If formatting element is in the stack of open elements, but the element is not in scope,
+            // 4.5 If formatting element is in the stack of open elements, but the element is not in scope,
             if !self.open_elements.has_element_in_scope(formatting_element) {
-                // SPEC: then this is a parse error; return.
+                // then this is a parse error; return.
                 log_parser_error!();
                 return;
             }
 
-            // SPEC: 4.6 If formatting element is not the current node,
+            // 4.6 If formatting element is not the current node,
             if formatting_element != self.open_elements.current_node().unwrap() {
-                // SPEC: this is a parse error. (But do not return.)
+                // this is a parse error. (But do not return.)
                 log_parser_error!();
             }
 
-            // SPEC: 4.7 Let furthest block be the topmost node in the stack of open elements that is
-            //           lower in the stack than formatting element, and is an element in the special category.
-            //           There might not be one.
+            // 4.7 Let furthest block be the topmost node in the stack of open elements that is lower in the stack than formatting element, and is an element in the special category. There might not be one.
             let furthest_block = self
                 .open_elements
                 .topmost_special_node_below(formatting_element);
 
-            // SPEC: 4.8 If there is no furthest block, then the UA must first pop all the nodes from
-            //           the bottom of the stack of open elements, from the current node up to and including formatting element,
+            // 4.8 If there is no furthest block, then the UA must first pop all the nodes from the bottom of the stack of open elements, from the current node up to and including formatting element,
             if furthest_block.is_none() {
                 while formatting_element != self.open_elements.current_node().unwrap() {
                     self.open_elements.pop();
                 }
                 self.open_elements.pop();
 
-                // SPEC: then remove formatting element from the list of active formatting elements,
+                // then remove formatting element from the list of active formatting elements,
                 self.active_formatting_elements.remove(formatting_element);
-                // SPEC: and finally return.
+                // and finally return.
                 return;
             }
             let furthest_block = furthest_block.unwrap();
 
-            // SPEC: 4.9 Let common ancestor be the element immediately above formatting element in
-            //           the stack of open elements.
+            // 4.9 Let common ancestor be the element immediately above formatting element in the stack of open elements.
             let common_ancestor = self
                 .open_elements
                 .element_immediately_above(formatting_element);
 
-            // SPEC: 4.10 Let a bookmark note the position of formatting element in the list of
-            //           active formatting elements relative to the elements on either side of it in the list.
+            // 4.10 Let a bookmark note the position of formatting element in the list of active formatting elements relative to the elements on either side of it in the list.
             let mut bookmark = self
                 .active_formatting_elements
                 .first_index_of(formatting_element)
                 .unwrap();
 
-            // SPEC: 4.11 Let node and last node be furthest block.
+            // 4.11 Let node and last node be furthest block.
             let mut node = furthest_block;
             let mut last_node = furthest_block;
 
             let node_above_node = self.open_elements.element_immediately_above(node);
 
-            // SPEC: 4.12 Let inner loop counter be 0.
+            // 4.12 Let inner loop counter be 0.
             let mut inner_loop_count = 0;
 
-            // SPEC: 4.13 While true:
+            // 4.13 While true:
             loop {
-                // SPEC: 4.13.1 Increment inner loop counter by 1.
+                // 4.13.1 Increment inner loop counter by 1.
                 inner_loop_count += 1;
 
-                // SPEC: 4.13.2 Let node be the element immediately above node in the stack of open elements,
-                //              or if node is no longer in the stack of open elements
-                //              (e.g. because it got removed by this algorithm),
-                //              the element that was immediately above node
-                //              in the stack of open elements before node was removed.
+                // 4.13.2 Let node be the element immediately above node in the stack of open elements, or if node is no longer in the stack of open elements (e.g. because it got removed by this algorithm), the element that was immediately above node in the stack of open elements before node was removed.
                 if let Some(node_above_node) = node_above_node {
                     node = node_above_node;
                 }
 
-                // SPEC: 4.13.3 If node is formatting element, then break.
+                // 4.13.3 If node is formatting element, then break.
                 if node == formatting_element {
                     break;
                 }
 
-                // SPEC: 4.13.4 If inner loop counter is greater than 3
-                //              and node is in the list of active formatting elements,
-                //              then remove node from the list of active formatting elements.
+                // 4.13.4 If inner loop counter is greater than 3 and node is in the list of active formatting elements, then remove node from the list of active formatting elements.
                 if inner_loop_count > 3 && self.active_formatting_elements.contains(node) {
                     self.active_formatting_elements.remove(node);
                 }
 
-                // SPEC: 4.13.5 If node is not in the list of active formatting elements,
-                //              then remove node from the stack of open elements and continue.
+                // 4.13.5 If node is not in the list of active formatting elements, then remove node from the stack of open elements and continue.
                 if !self.active_formatting_elements.contains(node) {
                     self.open_elements.remove_element(node);
                     continue;
                 }
 
-                // SPEC: 4.13.6 Create an element for the token for which the element node was created,
-                //              in the HTML namespace, with common ancestor as the intended parent;
+                // 4.13.6 Create an element for the token for which the element node was created, in the HTML namespace, with common ancestor as the intended parent;
                 let new_element =
                     self.create_element_for_token(token, Namespace::Html, common_ancestor.unwrap());
 
-                // SPEC: replace the entry for node in the list of active
+                // replace the entry for node in the list of active
                 //       formatting elements with an entry for the new element,
                 self.active_formatting_elements.replace(node, new_element);
 
-                // SPEC: replace the entry for node in the stack of open elements
+                // replace the entry for node in the stack of open elements
                 //       with an entry for the new element,
                 self.open_elements.replace(node, new_element);
 
                 // and let node be the new element.
                 node = new_element;
 
-                // SPEC: 4.13.7 If last node is furthest block,
-                //              then move the aforementioned bookmark to be immediately
-                //              after the new node in the list of active formatting elements.
+                // 4.13.7 If last node is furthest block, then move the aforementioned bookmark to be immediately after the new node in the list of active formatting elements.
                 if last_node == furthest_block {
                     bookmark = self
                         .active_formatting_elements
@@ -1012,46 +971,39 @@ impl<'a> Parser<'a> {
                         + 1
                 }
 
-                // SPEC: 4.13.8 Append last node to node.
+                // 4.13.8 Append last node to node.
                 node.append_child(last_node);
 
-                // SPEC: 4.13.9 Set last node to node.
+                // 4.13.9 Set last node to node.
                 last_node = node;
             }
 
-            // SPEC: 14. Insert whatever last node ended up being in the previous step at the
-            //           appropriate place for inserting a node,
-            //           but using common ancestor as the override target.
+            // 14. Insert whatever last node ended up being in the previous step at the appropriate place for inserting a node, but using common ancestor as the override target.
             let adjusted_insertion_location =
                 self.appropriate_place_for_inserting_node(common_ancestor);
             adjusted_insertion_location.insert(last_node);
 
-            // SPEC: 15. Create an element for the token for which formatting element was created,
-            //           in the HTML namespace,
-            //           with furthest block as the intended parent.
+            // 15. Create an element for the token for which formatting element was created, in the HTML namespace, with furthest block as the intended parent.
             let new_element = self.create_element_for_token(token, Namespace::Html, furthest_block);
 
-            // SPEC: 16. Take all of the child nodes of furthest block
-            //           and append them to the element created in the last step.
+            // 16. Take all of the child nodes of furthest block and append them to the element created in the last step.
             for child in furthest_block.child_nodes().iter() {
                 new_element.append_child(child);
             }
 
-            // SPEC: 17. Append that new element to furthest block.
+            // 17. Append that new element to furthest block.
             furthest_block.append_child(new_element);
 
-            // SPEC: 18. Remove formatting element from the list of active formatting elements,
+            // 18. Remove formatting element from the list of active formatting elements,
             self.active_formatting_elements.remove(formatting_element);
-            // SPEC: and insert the new element into the list of active formatting elements
-            //       at the position of the aforementioned bookmark.
+            // and insert the new element into the list of active formatting elements at the position of the aforementioned bookmark.
             self.active_formatting_elements
                 .insert(bookmark, new_element);
 
-            // SPEC: 19. Remove formatting element from the stack of open elements,
+            // 19. Remove formatting element from the stack of open elements,
             self.open_elements.remove_element(formatting_element);
 
-            // SPEC: and insert the new element into the stack of open elements
-            //       immediately below the position of furthest block in that stack.
+            // and insert the new element into the stack of open elements immediately below the position of furthest block in that stack.
             self.open_elements
                 .insert_immediately_below(new_element, furthest_block);
         }

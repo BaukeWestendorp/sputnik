@@ -133,14 +133,6 @@ impl<'a> StackOfOpenElements<'a> {
         self.elements.borrow().last().copied()
     }
 
-    pub fn first(&self) -> Option<NodeRef<'a>> {
-        self.elements.borrow().first().copied()
-    }
-
-    pub fn adjusted_current_node(&self) -> Option<NodeRef<'a>> {
-        todo!()
-    }
-
     pub fn push(&self, element: NodeRef<'a>) {
         self.elements.borrow_mut().push(element);
     }
@@ -217,16 +209,6 @@ impl<'a> StackOfOpenElements<'a> {
             .any(|node| node.is_element_with_one_of_tags(tags))
     }
 
-    pub fn last_with_tag(&self, tag: &str) -> Option<(usize, NodeRef<'a>)> {
-        self.elements
-            .borrow()
-            .iter()
-            .rev()
-            .enumerate()
-            .find(|(_, element)| element.is_element_with_tag(tag))
-            .map(|e| (e.0, *e.1))
-    }
-
     pub fn is_empty(&self) -> bool {
         self.elements.borrow().is_empty()
     }
@@ -235,59 +217,50 @@ impl<'a> StackOfOpenElements<'a> {
         self.elements.borrow_mut().clear()
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#has-an-element-in-the-specific-scope
+    // https://html.spec.whatwg.org/multipage/parsing.html#has-an-element-in-the-specific-scope
     fn has_tag_name_in_scope(&self, target: &str, list: &[&str]) -> bool {
-        // SPEC: 1. Initialize node to be the current node (the bottommost node of the stack).
+        // 1. Initialize node to be the current node (the bottommost node of the stack).
         for node in self.elements.borrow().iter().rev() {
-            // SPEC: 2. If node is the target node, terminate in a match state.
+            // 2. If node is the target node, terminate in a match state.
             if node.is_element_with_tag(target) {
                 return true;
             }
-            // SPEC: 3. Otherwise, if node is one of the element types in list, terminate in a failure state.
+            // 3. Otherwise, if node is one of the element types in list, terminate in a failure state.
             if node.is_element_with_one_of_tags(list) {
                 return false;
             }
-            // SPEC: 4. Otherwise, set node to the previous entry in the stack of open elements and return to step 2.
-            //         (This will never fail, since the loop will always terminate in the
-            //         previous step if the top of the stack — an html element — is reached.)
+            // 4. Otherwise, set node to the previous entry in the stack of open elements and return to step 2. (This will never fail, since the loop will always terminate in the previous step if the top of the stack — an html element — is reached.)
         }
         unreachable!();
     }
 
     pub fn has_element_in_scope(&self, target: NodeRef<'a>) -> bool {
-        // SPEC: 1. Initialize node to be the current node (the bottommost node of the stack).
+        // 1. Initialize node to be the current node (the bottommost node of the stack).
         for node in self.elements.borrow().iter().rev() {
-            // SPEC: 2. If node is the target node, terminate in a match state.
+            // 2. If node is the target node, terminate in a match state.
             if *node == target {
                 return true;
             }
-            // SPEC: 3. Otherwise, if node is one of the element types in list, terminate in a failure state.
+            // 3. Otherwise, if node is one of the element types in list, terminate in a failure state.
             // FIXME: Implement
 
-            // SPEC: 4. Otherwise, set node to the previous entry in the stack of open elements and return to step 2.
-            //         (This will never fail, since the loop will always terminate in the
-            //         previous step if the top of the stack — an html element — is reached.)
+            // 4. Otherwise, set node to the previous entry in the stack of open elements and return to step 2. (This will never fail, since the loop will always terminate in the previous step if the top of the stack — an html element — is reached.)
         }
         unreachable!();
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#has-an-element-in-scope
+    // https://html.spec.whatwg.org/multipage/parsing.html#has-an-element-in-scope
     pub fn has_element_with_tag_name_in_scope(&self, tag_name: &str) -> bool {
         self.has_tag_name_in_scope(tag_name, BASE_SCOPE_TAGS)
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-list-item-scope
+    // https://html.spec.whatwg.org/#has-an-element-in-list-item-scope
     pub fn has_element_with_tag_name_in_list_item_scope(&self, tag_name: &str) -> bool {
         self.has_tag_name_in_scope(tag_name, &[BASE_SCOPE_TAGS, &["ol", "ul"]].concat())
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-button-scope
+    // https://html.spec.whatwg.org/#has-an-element-in-button-scope
     pub fn has_element_with_tag_name_in_button_scope(&self, tag_name: &str) -> bool {
         self.has_tag_name_in_scope(tag_name, &[BASE_SCOPE_TAGS, &["button"]].concat())
-    }
-
-    // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-table-scope
-    pub fn has_element_with_tag_name_in_table_scope(&self, tag_name: &str) -> bool {
-        self.has_tag_name_in_scope(tag_name, &["html", "table", "template"])
     }
 }

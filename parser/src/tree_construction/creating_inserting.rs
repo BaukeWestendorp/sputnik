@@ -27,7 +27,7 @@ impl<'a> AdjustedInsertionLocation<'a> {
 }
 
 impl<'a> Parser<'a> {
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#appropriate-place-for-inserting-a-node
+    // https://html.spec.whatwg.org/multipage/parsing.html#appropriate-place-for-inserting-a-node
     pub(crate) fn appropriate_place_for_inserting_node(
         &'a self,
         override_target: Option<NodeRef<'a>>,
@@ -55,7 +55,7 @@ impl<'a> Parser<'a> {
         adjusted_insertion_location
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
+    // https://html.spec.whatwg.org/multipage/parsing.html#create-an-element-for-the-token
     pub(super) fn create_element_for_token(
         &'a self,
         token: &Token,
@@ -94,7 +94,7 @@ impl<'a> Parser<'a> {
         element
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-a-foreign-element
+    // https://html.spec.whatwg.org/multipage/parsing.html#insert-a-foreign-element
     pub(crate) fn insert_foreign_element_for_token(
         &'a self,
         token: &Token,
@@ -134,18 +134,18 @@ impl<'a> Parser<'a> {
         element
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element
+    // https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element
     pub(crate) fn insert_html_element_for_token(&'a self, token: &Token) -> NodeRef<'a> {
         self.insert_foreign_element_for_token(token, Namespace::Html)
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/#insert-a-character
-    pub(crate) fn insert_character(&'a self, character: char) {
+    // https://html.spec.whatwg.org/#insert-a-character
+    pub(crate) fn insert_character(&'a self, _character: char) {
         todo!()
     }
 
-    // SPECLINK: https://html.spec.whatwg.org/#insert-a-comment
-    pub(crate) fn insert_comment(&'a self, data: &str) {
+    // https://html.spec.whatwg.org/#insert-a-comment
+    pub(crate) fn insert_comment(&'a self, _data: &str) {
         todo!()
     }
 }

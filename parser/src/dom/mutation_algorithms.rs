@@ -2,6 +2,8 @@ use crate::types::NodeRef;
 
 use super::node::Node;
 
+// 4.2.3. Mutation algorithms
+// https://dom.spec.whatwg.org/#mutation-algorithms
 impl<'a> Node<'a> {
     // https://dom.spec.whatwg.org/#concept-node-ensure-pre-insertion-validity
     pub(crate) fn ensure_pre_insertion_validity(
@@ -20,7 +22,8 @@ impl<'a> Node<'a> {
         child: Option<NodeRef<'a>>,
     ) -> NodeRef<'a> {
         // 1. Ensure pre-insertion validity of node into parent before child.
-        Node::ensure_pre_insertion_validity(node, parent, child);
+        // FIXME: Propogate error.
+        Node::ensure_pre_insertion_validity(node, parent, child).unwrap();
 
         // 2. Let referenceChild be child.
         let mut reference_child = child;
@@ -123,21 +126,6 @@ impl<'a> Node<'a> {
     // https://dom.spec.whatwg.org/#concept-node-append
     pub(crate) fn append(node: NodeRef<'a>, parent: NodeRef<'a>, _suppress_observers: bool) {
         Node::pre_insert(node, parent, None);
-    }
-
-    // https://dom.spec.whatwg.org/#concept-node-replace
-    pub(crate) fn replace(_child: NodeRef<'a>, _node: NodeRef<'a>, _parent: NodeRef<'a>) {
-        todo!()
-    }
-
-    // https://dom.spec.whatwg.org/#concept-node-replace-all
-    pub(crate) fn replace_all(_node: NodeRef<'a>, _parent: NodeRef<'a>) {
-        todo!()
-    }
-
-    // https://dom.spec.whatwg.org/#concept-node-pre-remove
-    pub(crate) fn pre_remove(_child: NodeRef<'a>, _parent: NodeRef<'a>) {
-        todo!()
     }
 
     // https://dom.spec.whatwg.org/#concept-node-remove

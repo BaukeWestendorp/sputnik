@@ -8,6 +8,7 @@ pub(crate) mod mutation_algorithms;
 pub mod node;
 
 impl<'a> Parser<'a> {
+    // https://dom.spec.whatwg.org/#concept-create-element
     pub(crate) fn create_element(
         &'a self,
         document: NodeRef<'a>,

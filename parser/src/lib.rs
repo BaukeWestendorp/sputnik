@@ -2,7 +2,6 @@ use std::cell::{Cell, RefCell};
 
 use dom::{Node, NodeType};
 use tokenizer::{Token, Tokenizer};
-use tree_construction::insertion_modes;
 use tree_construction::list_of_active_formatting_elements::ListOfActiveFormattingElements;
 use tree_construction::stack_of_open_elements::StackOfOpenElements;
 use typed_arena::Arena;
@@ -186,9 +185,9 @@ impl<'a> Parser<'a> {
     pub fn parse(&'a self) -> Node<'a> {
         while let Some(token) = self.tokenizer.borrow_mut().next_token() {
             if self.token_is_not_in_foreign_context(token) {
-                self.process_token(&token)
+                self.process_token(token)
             } else {
-                self.process_token_in_foreign_context(&token)
+                self.process_token_in_foreign_context(token)
             };
         }
 
