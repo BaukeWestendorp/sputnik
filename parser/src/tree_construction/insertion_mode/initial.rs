@@ -7,9 +7,12 @@ use crate::{is_parser_whitespace, log_parser_error, Parser};
 impl<'a> Parser<'a> {
     pub(crate) fn handle_initial(&'a self, token: &Token) {
         match token {
-            Token::Character { data } if is_parser_whitespace(*data) => {}
-            Token::Comment { .. } => {
-                todo!()
+            Token::Character { data } if is_parser_whitespace(*data) => {
+                // Ignore the token.
+            }
+            Token::Comment { data } => {
+                // Insert a comment as the last child of the Document object.
+                self.insert_comment_as_last_child_of(data, &self.document);
             }
             Token::Doctype {
                 name,
@@ -41,6 +44,7 @@ impl<'a> Parser<'a> {
                 // FIXME: Then, if the document is not an iframe srcdoc document, and the parser cannot change the mode flag is false, and the DOCTYPE token matches one of the conditions in the following list, then set the Document to quirks mode:
                 // FIXME: Otherwise, if the document is not an iframe srcdoc document, and the parser cannot change the mode flag is false, and the DOCTYPE token matches one of the conditions in the following list, then then set the Document to limited-quirks mode:
 
+                // Then, switch the insertion mode to "before html".
                 self.switch_insertion_mode_to(InsertionMode::BeforeHtml);
             }
             _ => {
