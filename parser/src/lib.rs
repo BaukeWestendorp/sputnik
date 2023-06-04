@@ -85,15 +85,34 @@ impl<'a> Parser<'a> {
         self.process_token_using_the_rules_for(self.insertion_mode.get(), token);
     }
 
-    fn process_token_in_foreign_context(&self, token: &Token) {
+    // https://html.spec.whatwg.org/#parsing-main-inforeign
+    fn process_token_in_foreign_context(&'a self, token: &Token) {
         log_current_process!(self.insertion_mode, token);
 
         match token {
-            Token::Character { data } if data == &'\u{0000}' => todo!(),
-            Token::Character { data } if is_parser_whitespace(*data) => todo!(),
-            Token::Character { .. } => todo!(),
-            Token::Comment { .. } => todo!(),
-            Token::Doctype { .. } => todo!(),
+            Token::Character { data } if data == &'\u{0000}' => {
+                // Parse error. Insert a U+FFFD REPLACEMENT CHARACTER character.
+                log_parser_error!();
+                self.insert_character('\u{fffd}');
+            }
+            Token::Character { data } if is_parser_whitespace(*data) => {
+                // Insert the token's character.
+                self.insert_character(*data);
+            }
+            Token::Character { data } => {
+                // Insert the token's character.
+                self.insert_character(*data);
+                // Set the frameset-ok flag to "not ok"
+                self.frameset_ok.set(false);
+            }
+            Token::Comment { data } => {
+                // Insert a comment.
+                self.insert_comment(data)
+            }
+            Token::Doctype { .. } => {
+                // Parse error. Ignore the token.
+                log_parser_error!();
+            }
             Token::StartTag {
                 name, attributes, ..
             } if name == "b"
@@ -149,7 +168,10 @@ impl<'a> Parser<'a> {
             }
             Token::EndTag { name, .. } if name == "br" || name == "P" => todo!(),
             Token::StartTag { .. } => todo!(),
-            // FIXME: An end tag whose tag name is "script", if the current node is an SVG script element
+            Token::EndTag { name, .. } if name == "script" => {
+                // FIXME: if the current node is an SVG script element
+                todo!()
+            }
             _ => {
                 // 1. Initialize node to be the current node (the bottommost node of the stack).
                 let node = self.open_elements.current_node().unwrap();
