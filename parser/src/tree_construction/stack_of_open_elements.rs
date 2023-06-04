@@ -1,12 +1,107 @@
-use dom::arena::NodeRef;
-use dom::node_new::{Node, NodeData};
+use std::cell::RefCell;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+use crate::types::NodeRef;
+
 pub struct StackOfOpenElements<'a> {
-    pub elements: Vec<NodeRef<'a>>,
+    pub(super) elements: RefCell<Vec<NodeRef<'a>>>,
 }
 
-static BASE_SCOPE_ELEMENTS: &[&str] = &[
+pub(super) static SPECIAL_TAGS: &[&str] = &[
+    "address",
+    "applet",
+    "area",
+    "article",
+    "aside",
+    "base",
+    "basefont",
+    "bgsound",
+    "blockquote",
+    "body",
+    "br",
+    "button",
+    "caption",
+    "center",
+    "col",
+    "colgroup",
+    "dd",
+    "details",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "embed",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hgroup",
+    "hr",
+    "html",
+    "iframe",
+    "img",
+    "input",
+    "keygen",
+    "li",
+    "link",
+    "listing",
+    "main",
+    "marquee",
+    "menu",
+    "meta",
+    "nav",
+    "noembed",
+    "noframes",
+    "noscript",
+    "object",
+    "ol",
+    "p",
+    "param",
+    "plaintext",
+    "pre",
+    "script",
+    "search",
+    "section",
+    "select",
+    "source",
+    "style",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "template",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "track",
+    "ul",
+    "wbr",
+    "xmp",
+    // FIXME: Implement MathML mi
+    // FIXME: Implement MathML mo
+    // FIXME: Implement MathML mn
+    // FIXME: Implement MathML ms
+    // FIXME: Implement MathML mtext
+    // FIXME: Implement MathML annotation-xml
+    // FIXME: Implement SVG foreignObject
+    // FIXME: Implement SVG desc
+    // FIXME: Implement SVG title
+];
+
+pub(super) static BASE_SCOPE_TAGS: &[&str] = &[
     "applet",
     "caption",
     "html",
@@ -30,68 +125,63 @@ static BASE_SCOPE_ELEMENTS: &[&str] = &[
 impl<'a> StackOfOpenElements<'a> {
     pub fn new() -> Self {
         Self {
-            elements: Vec::new(),
+            elements: RefCell::new(vec![]),
         }
     }
 
     pub fn current_node(&self) -> Option<NodeRef<'a>> {
-        // SPEC: The current node is the bottommost node in this stack of open elements.
-        self.elements.last().copied()
+        self.elements.borrow().last().copied()
     }
 
     pub fn first(&self) -> Option<NodeRef<'a>> {
-        self.elements.first().copied()
+        self.elements.borrow().first().copied()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.elements.is_empty()
+    pub fn adjusted_current_node(&self) -> Option<NodeRef<'a>> {
+        todo!()
     }
 
-    pub fn clear(&mut self) {
-        self.elements.clear()
+    pub fn push(&self, element: NodeRef<'a>) {
+        self.elements.borrow_mut().push(element);
     }
 
-    pub fn push(&mut self, element: NodeRef<'a>) {
-        self.elements.push(element);
+    pub fn pop(&self) {
+        self.elements.borrow_mut().pop();
     }
 
-    pub fn pop_current_element(&mut self) {
-        self.elements.pop();
-    }
-
-    pub fn pop_elements_until_element_has_been_popped(&mut self, tag_name: &str) {
+    pub fn pop_elements_until_element_has_been_popped(&self, tag_name: &str) {
         let mut current = self.current_node();
-        while let Some(NodeData::Element { name, .. }) = current.map(|c| &c.data) {
-            self.pop_current_element();
-            if name.local == tag_name {
+        while let Some(current_tag_name) = current.and_then(|c| c.element_tag_name()) {
+            self.pop();
+            if tag_name == current_tag_name {
                 return;
             }
             current = self.current_node();
         }
     }
 
-    pub fn insert_immediately_below(&mut self, element: NodeRef<'a>, target: NodeRef<'a>) {
-        if let Some(index) = self.elements.iter().position(|e| e == &target) {
-            self.elements.insert(index + 1, element);
+    pub fn insert_immediately_below(&self, element: NodeRef<'a>, target: NodeRef<'a>) {
+        if let Some(index) = self.elements.borrow().iter().position(|e| e == &target) {
+            self.elements.borrow_mut().insert(index + 1, element);
         }
     }
 
-    pub fn replace(&mut self, target: NodeRef<'a>, replacement: NodeRef<'a>) {
-        if let Some(index) = self.elements.iter().position(|e| e == &target) {
-            self.elements[index] = replacement;
+    pub fn replace(&self, target: NodeRef<'a>, replacement: NodeRef<'a>) {
+        if let Some(index) = self.elements.borrow().iter().position(|e| e == &target) {
+            self.elements.borrow_mut()[index] = replacement;
         }
     }
 
-    pub fn remove_element(&mut self, element: NodeRef<'a>) {
-        if let Some(index) = self.elements.iter().position(|e| e == Rc<Element) {
-            self.elements.remove(index);
+    pub fn remove_element(&self, element: NodeRef<'a>) {
+        if let Some(index) = self.elements.borrow().iter().position(|e| e == &element) {
+            self.elements.borrow_mut().remove(index);
         }
     }
 
     pub fn element_immediately_above(&self, target: NodeRef<'a>) -> Option<NodeRef<'a>> {
         let mut found = false;
-        for element in self.elements.iter().rev() {
-            if Node::are_same(element, target) {
+        for element in self.elements.borrow().iter().rev() {
+            if *element == target {
                 found = true;
             } else if found {
                 return Some(element);
@@ -102,11 +192,11 @@ impl<'a> StackOfOpenElements<'a> {
 
     pub fn topmost_special_node_below(&self, target: NodeRef<'a>) -> Option<NodeRef<'a>> {
         let mut best = None;
-        for element in self.elements.iter().rev() {
-            if Node::are_same(element, target) {
+        for element in self.elements.borrow().iter().rev() {
+            if *element == target {
                 break;
             }
-            if element.is_element_with_special_tag() {
+            if element.is_element_with_one_of_tags(SPECIAL_TAGS) {
                 best = Some(*element);
             }
         }
@@ -115,34 +205,42 @@ impl<'a> StackOfOpenElements<'a> {
 
     pub fn contains(&self, target: NodeRef<'a>) -> bool {
         self.elements
+            .borrow()
             .iter()
-            .any(|element| Node::are_same(element, target))
+            .any(|element| *element == target)
     }
 
     pub fn contains_one_of_tags(&self, tags: &[&str]) -> bool {
-        self.elements.iter().any(|element| {
-            if let NodeData::Element { name, .. } = Rc<Element.data {
-                return tags.contains(&name.local.as_str());
-            }
-            false
-        })
+        self.elements
+            .borrow()
+            .iter()
+            .any(|node| node.is_element_with_one_of_tags(tags))
     }
 
     pub fn last_with_tag(&self, tag: &str) -> Option<(usize, NodeRef<'a>)> {
         self.elements
+            .borrow()
             .iter()
             .rev()
             .enumerate()
-            .find(|(_, element)| element.element_tag_name() == Some(tag))
+            .find(|(_, element)| element.is_element_with_tag(tag))
             .map(|e| (e.0, *e.1))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.elements.borrow().is_empty()
+    }
+
+    pub fn clear(&self) {
+        self.elements.borrow_mut().clear()
     }
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#has-an-element-in-the-specific-scope
     fn has_tag_name_in_scope(&self, target: &str, list: &[&str]) -> bool {
         // SPEC: 1. Initialize node to be the current node (the bottommost node of the stack).
-        for node in self.elements.iter().rev() {
+        for node in self.elements.borrow().iter().rev() {
             // SPEC: 2. If node is the target node, terminate in a match state.
-            if node.element_tag_name() == Some(target) {
+            if node.is_element_with_tag(target) {
                 return true;
             }
             // SPEC: 3. Otherwise, if node is one of the element types in list, terminate in a failure state.
@@ -158,9 +256,9 @@ impl<'a> StackOfOpenElements<'a> {
 
     pub fn has_element_in_scope(&self, target: NodeRef<'a>) -> bool {
         // SPEC: 1. Initialize node to be the current node (the bottommost node of the stack).
-        for node in self.elements.iter().rev() {
+        for node in self.elements.borrow().iter().rev() {
             // SPEC: 2. If node is the target node, terminate in a match state.
-            if Node::are_same(node, target) {
+            if *node == target {
                 return true;
             }
             // SPEC: 3. Otherwise, if node is one of the element types in list, terminate in a failure state.
@@ -175,17 +273,17 @@ impl<'a> StackOfOpenElements<'a> {
 
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#has-an-element-in-scope
     pub fn has_element_with_tag_name_in_scope(&self, tag_name: &str) -> bool {
-        self.has_tag_name_in_scope(tag_name, BASE_SCOPE_ELEMENTS)
+        self.has_tag_name_in_scope(tag_name, BASE_SCOPE_TAGS)
     }
 
     // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-list-item-scope
     pub fn has_element_with_tag_name_in_list_item_scope(&self, tag_name: &str) -> bool {
-        self.has_tag_name_in_scope(tag_name, &[BASE_SCOPE_ELEMENTS, &["ol", "ul"]].concat())
+        self.has_tag_name_in_scope(tag_name, &[BASE_SCOPE_TAGS, &["ol", "ul"]].concat())
     }
 
     // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-button-scope
     pub fn has_element_with_tag_name_in_button_scope(&self, tag_name: &str) -> bool {
-        self.has_tag_name_in_scope(tag_name, &[BASE_SCOPE_ELEMENTS, &["button"]].concat())
+        self.has_tag_name_in_scope(tag_name, &[BASE_SCOPE_TAGS, &["button"]].concat())
     }
 
     // SPECLINK: https://html.spec.whatwg.org/#has-an-element-in-table-scope

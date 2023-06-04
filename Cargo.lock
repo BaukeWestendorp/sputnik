@@ -3,19 +3,11 @@
 version = 3
 
 [[package]]
-name = "dom"
+name = "parser"
 version = "0.1.0"
 dependencies = [
  "tokenizer",
  "typed-arena",
-]
-
-[[package]]
-name = "parser"
-version = "0.1.0"
-dependencies = [
- "dom",
- "tokenizer",
 ]
 
 [[package]]

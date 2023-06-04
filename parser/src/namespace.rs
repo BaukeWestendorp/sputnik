@@ -1,18 +1,3 @@
-use crate::idl::DomException;
-
-pub fn validate_qualified_name(_qualified_name: &str) -> Result<(), DomException> {
-    // FIXME: Implement
-    Ok(())
-}
-
-pub fn validate_and_extract(
-    _namespace: Namespace,
-    _qualified_name: &str,
-) -> Result<(), DomException> {
-    // FIXME: Implement
-    Ok(())
-}
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
 pub enum Namespace {
     Html,

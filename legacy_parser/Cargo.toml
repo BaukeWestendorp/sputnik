@@ -1,8 +1,0 @@
-[package]
-name = "legacy_parser"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-tokenizer = { path = "../tokenizer" }
-dom = { path = "../dom" }

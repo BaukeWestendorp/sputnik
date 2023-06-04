@@ -1,78 +1,90 @@
-use dom::arena::NodeRef;
+use std::cell::RefCell;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
-pub struct ListOfActiveFormattingElements<'a> {
-    elements: Vec<ActiveFormattingElement<'a>>,
-}
+use crate::types::NodeRef;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ActiveFormattingElement<'a> {
     Marker,
     Element(NodeRef<'a>),
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Position {
     End,
     LastMarkerOrElseStart,
 }
 
-// FIXME: This should probably inherit from Vec or something.
+pub struct ListOfActiveFormattingElements<'a> {
+    elements: RefCell<Vec<ActiveFormattingElement<'a>>>,
+}
+
 impl<'a> ListOfActiveFormattingElements<'a> {
     pub fn new() -> Self {
         Self {
-            elements: Vec::new(),
+            elements: RefCell::new(vec![]),
         }
     }
 
+    // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#reconstruct-the-active-formatting-elements
+    pub fn reconstruct_if_any(&self) {
+        // FIXME: Implement
+    }
+
     // SPECLINK: https://html.spec.whatwg.org/multipage/parsing.html#push-onto-the-list-of-active-formatting-elements
-    pub fn push_element(&mut self, element: NodeRef<'a>) {
+    pub fn push_element(&self, element: NodeRef<'a>) {
         // FIXME: Implement Noah's Ark clause.
         self.elements
+            .borrow_mut()
             .push(ActiveFormattingElement::Element(element));
     }
 
-    pub fn insert_marker_at_end(&mut self) {
-        self.elements.push(ActiveFormattingElement::Marker);
+    pub fn insert_marker_at_end(&self) {
+        self.elements
+            .borrow_mut()
+            .push(ActiveFormattingElement::Marker);
     }
 
     pub fn first_index_of(&self, target: NodeRef<'a>) -> Option<usize> {
         self.elements
+            .borrow()
             .iter()
             .position(|e| *e == ActiveFormattingElement::Element(target))
     }
 
-    pub fn replace(&mut self, target: NodeRef<'a>, replacement: NodeRef<'a>) {
+    pub fn replace(&self, target: NodeRef<'a>, replacement: NodeRef<'a>) {
         if let Some(index) = self
             .elements
+            .borrow()
             .iter()
             .position(|e| *e == ActiveFormattingElement::Element(target))
         {
-            self.elements[index] = ActiveFormattingElement::Element(replacement);
+            self.elements.borrow_mut()[index] = ActiveFormattingElement::Element(replacement);
         }
     }
 
-    pub fn insert(&mut self, index: usize, element: NodeRef<'a>) {
+    pub fn insert(&self, index: usize, element: NodeRef<'a>) {
         self.elements
+            .borrow_mut()
             .insert(index, ActiveFormattingElement::Element(element));
     }
 
-    pub fn remove(&mut self, element: NodeRef<'a>) {
+    pub fn remove(&self, element: NodeRef<'a>) {
         if let Some(index) = self
             .elements
+            .borrow_mut()
             .iter()
             .position(|e| *e == ActiveFormattingElement::Element(element))
         {
-            self.elements.remove(index);
+            self.elements.borrow_mut().remove(index);
         }
     }
 
     pub fn len(&self) -> usize {
-        self.elements.len()
+        self.elements.borrow().len()
     }
 
     pub fn last_element_with_tag_name_before_marker(&self, tag_name: &str) -> Option<NodeRef<'a>> {
-        for element in self.elements.iter().rev() {
+        for element in self.elements.borrow().iter().rev() {
             if matches!(element, ActiveFormattingElement::Marker) {
                 break;
             }
@@ -86,7 +98,7 @@ impl<'a> ListOfActiveFormattingElements<'a> {
     }
 
     pub fn contains(&self, target: NodeRef<'a>) -> bool {
-        self.elements.iter().any(|element| {
+        self.elements.borrow().iter().any(|element| {
             if let ActiveFormattingElement::Element(element) = element {
                 return *element == target;
             }
@@ -98,7 +110,9 @@ impl<'a> ListOfActiveFormattingElements<'a> {
         if let Some(start) = self.index_from_position(start) {
             if let Some(end) = self.index_from_position(end) {
                 for i in start..end {
-                    if let Some(ActiveFormattingElement::Element(element)) = self.elements.get(i) {
+                    if let Some(ActiveFormattingElement::Element(element)) =
+                        self.elements.borrow().get(i)
+                    {
                         if element.is_element_with_one_of_tags(&[tag_name]) {
                             return true;
                         }
@@ -114,6 +128,7 @@ impl<'a> ListOfActiveFormattingElements<'a> {
             Position::End => Some(self.len().saturating_sub(1)),
             Position::LastMarkerOrElseStart => self
                 .elements
+                .borrow()
                 .iter()
                 .rev()
                 .enumerate()

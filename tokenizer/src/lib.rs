@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use named_character_references::NamedCharacterReference;
 
 use crate::named_character_references::NAMED_CHARACTER_REFERENCES;
@@ -102,7 +104,7 @@ pub enum State {
     NumericCharacterReferenceEnd,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Token {
     Doctype {
         name: Option<String>,
@@ -113,7 +115,7 @@ pub enum Token {
     StartTag {
         name: String,
         self_closing: bool,
-        self_closing_acknowledged: bool,
+        self_closing_acknowledged: Cell<bool>,
         attributes: Vec<Attribute>,
     },
     EndTag {
@@ -131,7 +133,7 @@ pub enum Token {
 }
 
 impl Token {
-    pub fn acknowledge_self_closing_flag_if_set(&mut self) {
+    pub fn acknowledge_self_closing_flag_if_set(&self) {
         if let Token::StartTag {
             self_closing_acknowledged,
             self_closing,
@@ -139,7 +141,7 @@ impl Token {
         } = self
         {
             if *self_closing {
-                *self_closing_acknowledged = true;
+                self_closing_acknowledged.set(true);
             }
         } else {
             panic!("Tried to acknowledge non-StarTag token!");
@@ -155,13 +157,13 @@ impl Token {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Attribute {
     pub name: String,
     pub value: String,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Tokenizer {
     input: String,
     state: State,
@@ -479,7 +481,7 @@ impl Tokenizer {
                                 // SPEC: Set its tag name to the empty string.
                                 name: String::new(),
                                 self_closing: false,
-                                self_closing_acknowledged: false,
+                                self_closing_acknowledged: Cell::new(false),
                                 attributes: Vec::new(),
                             });
                             // SPEC: Reconsume in the tag name state.
