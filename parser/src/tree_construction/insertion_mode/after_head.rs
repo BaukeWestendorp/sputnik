@@ -1,5 +1,3 @@
-use std::cell::Cell;
-
 use tokenizer::Token;
 
 use crate::types::InsertionMode;
@@ -10,12 +8,7 @@ impl<'a> Parser<'a> {
         macro_rules! anything_else {
             () => {
                 // Insert an HTML element for a "body" start tag token with no attributes.
-                self.insert_html_element_for_token(&Token::StartTag {
-                    name: "body".to_string(),
-                    self_closing: false,
-                    self_closing_acknowledged: Cell::new(false),
-                    attributes: vec![],
-                });
+                self.insert_html_element_for_start_tag("body");
 
                 // Switch the insertion mode to "in body".
                 self.switch_insertion_mode_to(InsertionMode::InBody);

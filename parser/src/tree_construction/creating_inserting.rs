@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use tokenizer::Token;
 
 use crate::dom::Node;
@@ -137,6 +139,15 @@ impl<'a> Parser<'a> {
     // https://html.spec.whatwg.org/multipage/parsing.html#insert-an-html-element
     pub(crate) fn insert_html_element_for_token(&'a self, token: &Token) -> NodeRef<'a> {
         self.insert_foreign_element_for_token(token, Namespace::Html)
+    }
+
+    pub(crate) fn insert_html_element_for_start_tag(&'a self, tag: &str) -> NodeRef<'a> {
+        self.insert_html_element_for_token(&Token::StartTag {
+            name: tag.to_string(),
+            self_closing: false,
+            self_closing_acknowledged: Cell::new(false),
+            attributes: vec![],
+        })
     }
 
     // https://html.spec.whatwg.org/#insert-a-character

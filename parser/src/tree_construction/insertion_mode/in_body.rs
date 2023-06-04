@@ -327,12 +327,7 @@ impl<'a> Parser<'a> {
                     .has_element_with_tag_name_in_button_scope("p")
                 {
                     log_parser_error!("Found </p> closing tag in invalid scope.");
-                    self.insert_html_element_for_token(&Token::StartTag {
-                        name: "p".to_string(),
-                        self_closing: false,
-                        self_closing_acknowledged: Cell::new(false),
-                        attributes: vec![],
-                    });
+                    self.insert_html_element_for_start_tag("p");
                 }
 
                 // Close a p element.
