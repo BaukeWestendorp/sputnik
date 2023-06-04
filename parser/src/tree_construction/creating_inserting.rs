@@ -2,7 +2,7 @@ use std::cell::Cell;
 
 use tokenizer::Token;
 
-use crate::dom::{node, Node};
+use crate::dom::Node;
 use crate::namespace::Namespace;
 use crate::types::NodeRef;
 use crate::Parser;

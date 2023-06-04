@@ -1,5 +1,3 @@
-use std::cell::Cell;
-
 use tokenizer::Token;
 
 use crate::namespace::Namespace;
