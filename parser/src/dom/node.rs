@@ -8,7 +8,9 @@ pub enum NodeType {
         tag_name: String,
     },
     Attr,
-    Text,
+    Text {
+        data: RefCell<String>,
+    },
     CDataSection,
     ProcessingInstruction,
     Comment,
@@ -23,7 +25,7 @@ pub enum NodeType {
 
 #[derive(Debug, Clone, Eq)]
 pub struct Node<'a> {
-    node_type: NodeType,
+    pub node_type: NodeType,
 
     pub(super) parent: NodeLink<'a>,
     pub(super) first_child: NodeLink<'a>,
@@ -46,7 +48,7 @@ impl<'a> Node<'a> {
                 tag_name.to_ascii_uppercase()
             }
             NodeType::Attr => todo!(),
-            NodeType::Text => "#text".to_string(),
+            NodeType::Text { .. } => "#text".to_string(),
             NodeType::CDataSection => "#cdata-section".to_string(),
             NodeType::ProcessingInstruction => todo!(),
             NodeType::Comment => "#comment".to_string(),
@@ -188,7 +190,7 @@ impl<'a> Node<'a> {
 
     is_node_type!(is_element, NodeType::Element { .. });
     is_node_type!(is_attr, NodeType::Attr);
-    is_node_type!(is_text, NodeType::Text);
+    is_node_type!(is_text, NodeType::Text { .. });
     is_node_type!(is_cdata_section, NodeType::CDataSection);
     is_node_type!(is_processing_instruction, NodeType::ProcessingInstruction);
     is_node_type!(is_comment, NodeType::Comment);
@@ -257,7 +259,7 @@ impl<'a> PartialEq for Node<'a> {
             (NodeType::Element { tag_name: tag_name_a }, NodeType::Element { tag_name: tag_name_b }) => tag_name_a == tag_name_b, // FIXME: Implement
             (NodeType::Attr, NodeType::Attr) => todo!(),
             (NodeType::ProcessingInstruction, NodeType::ProcessingInstruction) => todo!(),
-            (NodeType::Text, NodeType::Text) => todo!(),
+            (NodeType::Text { data: data_a }, NodeType::Text { data: data_b}) => data_a == data_b,
             (NodeType::Comment, NodeType::Comment) => todo!(),
             _ => true,
         } &&

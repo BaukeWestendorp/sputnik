@@ -1,8 +1,8 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
 use tokenizer::Token;
 
-use crate::dom::Node;
+use crate::dom::{Node, NodeType};
 use crate::namespace::Namespace;
 use crate::types::NodeRef;
 use crate::Parser;
@@ -23,8 +23,8 @@ impl<'a> AdjustedInsertionLocation<'a> {
         }
     }
 
-    pub(crate) fn insert(&self, element: NodeRef<'a>) {
-        Node::insert(element, self.parent, self.child_node(), false);
+    pub(crate) fn insert(&self, node: NodeRef<'a>) {
+        Node::insert(node, self.parent, self.child_node(), false);
     }
 }
 
@@ -151,8 +151,30 @@ impl<'a> Parser<'a> {
     }
 
     // https://html.spec.whatwg.org/#insert-a-character
-    pub(crate) fn insert_character(&'a self, _character: char) {
-        todo!()
+    pub(crate) fn insert_character(&'a self, character: char) {
+        // 2. Let the adjusted insertion location be the appropriate place for inserting a node.
+        let adjusted_insertion_location = self.appropriate_place_for_inserting_node(None);
+
+        // 3. If the adjusted insertion location is in a Document node, then return.
+        if adjusted_insertion_location.parent.is_document() {
+            return;
+        }
+
+        // 4. If there is a Text node immediately before the adjusted insertion location, then append data to that Text node's data.
+        if let Some(last_child) = adjusted_insertion_location.parent.last_child() {
+            if let NodeType::Text { data } = &last_child.node_type {
+                data.borrow_mut().push(character);
+            }
+        } else {
+            // Otherwise, create a new Text node whose data is data and whose node document is the same as that of the element in which the adjusted insertion location finds itself, and insert the newly created node at the adjusted insertion location.
+            let text_node = self.allocate_node(Node::new(
+                Some(adjusted_insertion_location.parent.node_document()),
+                NodeType::Text {
+                    data: RefCell::new(character.to_string()),
+                },
+            ));
+            adjusted_insertion_location.insert(text_node);
+        }
     }
 
     // https://html.spec.whatwg.org/#insert-a-comment
