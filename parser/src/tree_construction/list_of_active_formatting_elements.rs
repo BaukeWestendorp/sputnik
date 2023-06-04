@@ -28,6 +28,7 @@ impl<'a> ListOfActiveFormattingElements<'a> {
     // https://html.spec.whatwg.org/multipage/parsing.html#reconstruct-the-active-formatting-elements
     pub fn reconstruct_if_any(&self) {
         // FIXME: Implement
+        eprintln!("FIXME: Skip reconstructing active formatting elements!")
     }
 
     //  https://html.spec.whatwg.org/multipage/parsing.html#push-onto-the-list-of-active-formatting-elements

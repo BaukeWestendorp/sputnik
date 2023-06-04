@@ -1,7 +1,7 @@
 use crate::Parser;
 
 mod creating_inserting;
-pub(crate) mod insertion_modes;
+pub(crate) mod insertion_mode;
 pub(crate) mod list_of_active_formatting_elements;
 pub(crate) mod stack_of_open_elements;
 
