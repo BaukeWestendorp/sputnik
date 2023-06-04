@@ -219,29 +219,32 @@ impl<'a> Node<'a> {
         false
     }
 
-    pub fn dump(&'a self) {
-        self.internal_dump("");
+    pub fn dump(&'a self, settings: NodeDumpSettings) {
+        self.internal_dump("", &settings);
     }
 
-    fn internal_dump(&'a self, indentation: &str) {
+    fn internal_dump(&'a self, indentation: &str, settings: &NodeDumpSettings) {
         let indent = "  ";
 
         let opening = match &self.node_type {
             NodeType::DocumentType { name, .. } => format!("DOCTYPE {}", name),
+            NodeType::Text { data } => format!("{}: \"{}\"", self.node_name(), {
+                let data = data.borrow().clone();
+                match settings.trim_text {
+                    true => data.trim().to_string(),
+                    false => data.clone(),
+                }
+            }),
             _ => self.node_name(),
-        };
-        let closing = match &self.node_type {
-            NodeType::DocumentType { .. } => None,
-            _ => Some("\""),
         };
         println!("{indentation}{}", opening);
         for child in self.child_nodes().iter() {
             let mut indentation = indentation.to_string();
             indentation.push_str(indent);
-            child.internal_dump(&indentation);
+            child.internal_dump(&indentation, settings);
         }
-        if let Some(closing) = closing {
-            println!("{indentation}{closing}");
+        if let Some(closing_marker) = settings.closing_marker {
+            println!("{indentation}{closing_marker}");
         }
     }
 }
@@ -272,5 +275,19 @@ impl<'a> PartialEq for Node<'a> {
             let other_child = other_children.get(child.index());
             child == other_child.unwrap()
         })
+    }
+}
+
+pub struct NodeDumpSettings {
+    closing_marker: Option<&'static str>,
+    trim_text: bool,
+}
+
+impl Default for NodeDumpSettings {
+    fn default() -> Self {
+        Self {
+            closing_marker: None,
+            trim_text: true,
+        }
     }
 }
