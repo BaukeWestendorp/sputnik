@@ -1,13 +1,17 @@
 use std::cell::{Cell, Ref, RefCell};
 
+use tokenizer::Attribute;
+
 use crate::namespace::Namespace;
 use crate::types::{NodeLink, NodeRef};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeType {
     Element {
+        // FIXME: This does not really follow the spec.
         tag_name: String,
         namespace: Option<Namespace>,
+        attributes: RefCell<Vec<Attribute>>,
     },
     Attr,
     Text {
@@ -244,6 +248,13 @@ impl<'a> Node<'a> {
                     false => data.clone(),
                 }
             }),
+            NodeType::Element { attributes, .. } => {
+                let mut attr_string = String::new();
+                for attr in attributes.borrow().iter() {
+                    attr_string.push_str(&format!("{}=\"{}\" ", attr.name, attr.value));
+                }
+                format!("{} {}", self.node_name(), attr_string)
+            }
             _ => self.node_name(),
         };
         println!("{indentation}{}", opening);
@@ -262,28 +273,72 @@ impl<'a> Node<'a> {
 impl<'a> PartialEq for Node<'a> {
     fn eq(&self, other: &Self) -> bool {
         // A and B implement the same interfaces.
-        self.node_type == other.node_type &&
         // The following are equal, switching on the interface A implements:
-        match (self.node_type.clone(), other.node_type.clone()) {
-            (NodeType::DocumentType { name: name_a, public_identifier: pub_id_a, system_identifier: sys_id_a} , NodeType::DocumentType { name: name_b, public_identifier: pub_id_b, system_identifier: sys_id_b} ) => {
-                name_a == name_b && pub_id_a == pub_id_b && sys_id_a == sys_id_b
-            },
-            (NodeType::Element { tag_name: tag_name_a, namespace: namespace_a }, NodeType::Element { tag_name: tag_name_b, namespace: namespace_b }) => tag_name_a == tag_name_b && namespace_a == namespace_b, // FIXME: Implement
-            (NodeType::Attr, NodeType::Attr) => todo!(),
-            (NodeType::ProcessingInstruction, NodeType::ProcessingInstruction) => todo!(),
-            (NodeType::Text { data: data_a }, NodeType::Text { data: data_b}) => data_a == data_b,
-            (NodeType::Comment, NodeType::Comment) => todo!(),
-            _ => true,
-        } &&
-        // FIXME: If A is an element, each attribute in its attribute list has an attribute that equals an attribute in B’s attribute list. 
-        // A and B have the same number of children. 
-        self.children.borrow().len() == other.children.borrow().len() &&
+        // If A is an element, each attribute in its attribute list has an attribute that equals an attribute in B’s attribute list.
+        // A and B have the same number of children.
         // Each child of A equals the child of B at the identical index.
-        self.children.borrow().iter().all(|child| {
-            let other_children = other.children.borrow();
-            let other_child = other_children.get(child.index());
-            child == other_child.unwrap()
-        })
+
+        self.node_type == other.node_type
+            && match (self.node_type.clone(), other.node_type.clone()) {
+                (
+                    NodeType::DocumentType {
+                        name: name_a,
+                        public_identifier: pub_id_a,
+                        system_identifier: sys_id_a,
+                    },
+                    NodeType::DocumentType {
+                        name: name_b,
+                        public_identifier: pub_id_b,
+                        system_identifier: sys_id_b,
+                    },
+                ) => name_a == name_b && pub_id_a == pub_id_b && sys_id_a == sys_id_b,
+                (
+                    NodeType::Element {
+                        tag_name: tag_name_a,
+                        namespace: namespace_a,
+                        attributes: attributes_a,
+                    },
+                    NodeType::Element {
+                        tag_name: tag_name_b,
+                        namespace: namespace_b,
+                        attributes: attributes_b,
+                    },
+                ) => {
+                    tag_name_a == tag_name_b
+                        && namespace_a == namespace_b
+                        && attributes_a.borrow().len() == attributes_b.borrow().len()
+                }
+                (NodeType::Attr, NodeType::Attr) => todo!(),
+                (NodeType::ProcessingInstruction, NodeType::ProcessingInstruction) => todo!(),
+                (NodeType::Text { data: data_a }, NodeType::Text { data: data_b }) => {
+                    data_a == data_b
+                }
+                (NodeType::Comment, NodeType::Comment) => todo!(),
+                _ => true,
+            }
+            && match &self.node_type {
+                NodeType::Element { attributes, .. } => {
+                    if let NodeType::Element {
+                        attributes: other_attributes,
+                        ..
+                    } = &other.node_type
+                    {
+                        attributes.borrow().iter().enumerate().all(|(i, attr)| {
+                            let other_attributes = other_attributes.borrow();
+                            Some(attr) == other_attributes.get(i)
+                        })
+                    } else {
+                        false
+                    }
+                }
+                _ => true,
+            }
+            && self.children.borrow().len() == other.children.borrow().len()
+            && self.children.borrow().iter().all(|child| {
+                let other_children = other.children.borrow();
+                let other_child = other_children.get(child.index());
+                child == other_child.unwrap()
+            })
     }
 }
 

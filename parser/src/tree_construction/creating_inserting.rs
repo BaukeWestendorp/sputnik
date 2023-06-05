@@ -71,15 +71,17 @@ impl<'a> Parser<'a> {
         let document = intended_parent.node_document();
 
         // 4. Let local name be the tag name of the token.
-        let local_name = match token {
+        let (local_name, token_attributes) = match token {
             Token::StartTag {
-                name: local_name, ..
+                name: local_name,
+                attributes,
+                ..
             } => {
                 // FIXME: 5. Let is be the value of the "is" attribute in the given token, if such an attribute exists, or null otherwise.
                 // FIXME: 6. Let definition be the result of looking up a custom element definition given document, given namespace, local name, and is.
                 // FIXME: 7. If definition is non-null and the parser was not created as part of the HTML fragment parsing algorithm, then let will execute script be true. Otherwise, let it be false.
                 // FIXME: 8. If will execute script is true, then:
-                local_name
+                (local_name, attributes)
             }
             _ => panic!("cannot create element from non-StartTag token"),
         };
@@ -87,7 +89,13 @@ impl<'a> Parser<'a> {
         // 9. Let element be the result of creating an element given document, localName, given namespace, null, and is. If will execute script is true, set the synchronous custom elements flag; otherwise, leave it unset.
         let element = self.create_element(document, local_name, namespace, None, None, false);
 
-        // FIXME: 10. Append each attribute in the given token to element.
+        // 10. Append each attribute in the given token to element.
+        if let NodeType::Element { attributes, .. } = &element.node_type {
+            for attr in token_attributes {
+                attributes.borrow_mut().push(attr.clone());
+            }
+        }
+
         // FIXME: 11. If will execute script is true, then:
         // FIXME: 12. If element has an xmlns attribute in the XMLNS namespace whose value is not exactly the same as the element's namespace, that is a parse error. Similarly, if element has an xmlns:xlink attribute in the XMLNS namespace whose value is not the XLink Namespace, that is a parse error.
         // FIXME: 13. If element is a resettable element, invoke its reset algorithm. (This initializes the element's value and checkedness based on the element's attributes.)

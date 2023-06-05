@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use crate::namespace::Namespace;
 use crate::types::NodeRef;
 use crate::Parser;
@@ -24,6 +26,7 @@ impl<'a> Parser<'a> {
             NodeType::Element {
                 tag_name: local_name.to_owned(),
                 namespace: Some(namespace),
+                attributes: RefCell::new(vec![]),
             },
         ))
     }
