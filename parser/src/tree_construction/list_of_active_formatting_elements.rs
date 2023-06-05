@@ -2,6 +2,8 @@ use std::cell::RefCell;
 
 use crate::types::NodeRef;
 
+use super::stack_of_open_elements::StackOfOpenElements;
+
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ActiveFormattingElement<'a> {
     Marker,
@@ -26,9 +28,35 @@ impl<'a> ListOfActiveFormattingElements<'a> {
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#reconstruct-the-active-formatting-elements
-    pub fn reconstruct_if_any(&self) {
-        // FIXME: Implement
-        eprintln!("FIXME: Skip reconstructing active formatting elements!")
+    pub fn reconstruct_if_any(&self, stack_of_open_elements: &'a StackOfOpenElements<'a>) {
+        let elements = self.elements.borrow_mut();
+
+        // If there are no entries in the list of active formatting elements, then there is nothing to reconstruct; stop this algorithm.
+        if elements.is_empty() {
+            return;
+        }
+
+        // If the last (most recently added) entry in the list of active formatting elements is a marker, or if it is an element that is in the stack of open elements, then there is nothing to reconstruct; stop this algorithm.
+        match elements.last().unwrap() {
+            ActiveFormattingElement::Marker => return,
+            ActiveFormattingElement::Element(element)
+                if stack_of_open_elements.contains(element) =>
+            {
+                return;
+            }
+            _ => {}
+        }
+
+        todo!();
+
+        // FIXME: Let entry be the last (most recently added) element in the list of active formatting elements.
+        // FIXME: Rewind: If there are no entries before entry in the list of active formatting elements, then jump to the step labeled create.
+        // FIXME: Let entry be the entry one earlier than entry in the list of active formatting elements.
+        // FIXME: If entry is neither a marker nor an element that is also in the stack of open elements, go to the step labeled rewind.
+        // FIXME: Advance: Let entry be the element one later than entry in the list of active formatting elements.
+        // FIXME: Create: Insert an HTML element for the token for which the element entry was created, to obtain new element.
+        // FIXME: Replace the entry for entry in the list with an entry for new element.
+        // FIXME: If the entry for new element in the list of active formatting elements is not the last entry in the list, return to the step labeled advance.
     }
 
     //  https://html.spec.whatwg.org/multipage/parsing.html#push-onto-the-list-of-active-formatting-elements

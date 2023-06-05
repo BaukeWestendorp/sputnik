@@ -245,21 +245,25 @@ impl<'a> StackOfOpenElements<'a> {
             }
             // 4. Otherwise, set node to the previous entry in the stack of open elements and return to step 2. (This will never fail, since the loop will always terminate in the previous step if the top of the stack — an html element — is reached.)
         }
+
         unreachable!();
     }
 
-    pub fn has_element_in_scope(&self, target: NodeRef<'a>) -> bool {
+    pub fn has_element_in_scope(&self, target_node: NodeRef<'a>) -> bool {
         // 1. Initialize node to be the current node (the bottommost node of the stack).
         for node in self.elements.borrow().iter().rev() {
             // 2. If node is the target node, terminate in a match state.
-            if *node == target {
+            if *node == target_node {
                 return true;
             }
             // 3. Otherwise, if node is one of the element types in list, terminate in a failure state.
-            // FIXME: Implement
+            if node.is_element_with_one_of_tags(BASE_SCOPE_TAGS) {
+                return false;
+            }
 
             // 4. Otherwise, set node to the previous entry in the stack of open elements and return to step 2. (This will never fail, since the loop will always terminate in the previous step if the top of the stack — an html element — is reached.)
         }
+
         unreachable!();
     }
 

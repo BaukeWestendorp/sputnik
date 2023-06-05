@@ -13,16 +13,18 @@ impl<'a> Parser<'a> {
         while let Some(node) = current {
             if let Some(except_for) = except_for {
                 if node.is_element_with_tag(except_for) {
-                    break;
+                    return;
                 }
             }
 
-            if node.is_element_with_one_of_tags(&[
+            if !node.is_element_with_one_of_tags(&[
                 "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc",
             ]) {
                 return;
             }
+
             self.open_elements.pop();
+
             current = self.open_elements.current_node();
         }
     }

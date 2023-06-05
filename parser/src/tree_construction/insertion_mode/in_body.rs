@@ -19,14 +19,16 @@ impl<'a> Parser<'a> {
             }
             Token::Character { data } if is_parser_whitespace(*data) => {
                 // Reconstruct the active formatting elements, if any.
-                self.active_formatting_elements.reconstruct_if_any();
+                self.active_formatting_elements
+                    .reconstruct_if_any(&self.open_elements);
 
                 // Insert the token's character.
                 self.insert_character(*data);
             }
             Token::Character { data } => {
                 // Reconstruct the active formatting elements, if any.
-                self.active_formatting_elements.reconstruct_if_any();
+                self.active_formatting_elements
+                    .reconstruct_if_any(&self.open_elements);
                 // Insert the token's character.
                 self.insert_character(*data);
                 // Set the frameset-ok flag to "not ok".
@@ -189,7 +191,7 @@ impl<'a> Parser<'a> {
                 self.frameset_ok.set(false);
 
                 // 2. Initialize node to be the current node (the bottommost node of the stack).
-                for node in self.open_elements.elements.borrow().iter().rev() {
+                for node in self.open_elements.elements.clone().borrow().iter().rev() {
                     // 3. Loop: If node is an li element, then run these substeps:
                     if node.is_element_with_tag("li") {
                         // 3.1. Generate implied end tags, except for li elements.
@@ -265,14 +267,19 @@ impl<'a> Parser<'a> {
                     || name == "ul" =>
             {
                 // If the stack of open elements does not have an element in scope that is an HTML element with the same tag name as that of the token,
-                if self.open_elements.has_element_with_tag_name_in_scope(name) {
+                if !self.open_elements.has_element_with_tag_name_in_scope(name) {
                     // then this is a parse error; ignore the token.
-                    log_parser_error!();
+                    log_parser_error!(format!(
+                        "Found end tag '{}', but no element in scope with tag name '{}' was found.",
+                        name, name,
+                    ));
                     return;
                 }
                 // Otherwise, run these steps:
+
                 // 1. Generate implied end tags.
                 self.generate_implied_end_tags_except_for(None);
+
                 // 2. If the current node is not an HTML element with the same tag name as that of the token,
                 if !self
                     .open_elements
@@ -283,6 +290,7 @@ impl<'a> Parser<'a> {
                     // then this is a parse error.
                     log_parser_error!("Found closing tag, but current node is not an HTML element with the same tag name.");
                 }
+
                 // 3. Pop elements from the stack of open elements until an HTML element with the same tag name as the token has been popped from the stack.
                 self.open_elements
                     .pop_elements_until_element_with_tag_name_has_been_popped(name);
@@ -392,7 +400,8 @@ impl<'a> Parser<'a> {
                 }
 
                 // Reconstruct the active formatting elements, if any.
-                self.active_formatting_elements.reconstruct_if_any();
+                self.active_formatting_elements
+                    .reconstruct_if_any(&self.open_elements);
                 // Insert an HTML element for the token.
                 let element = self.insert_html_element_for_token(token);
                 // Push onto the list of active formatting elements that element.
@@ -413,7 +422,8 @@ impl<'a> Parser<'a> {
                     || name == "u" =>
             {
                 // Reconstruct the active formatting elements, if any.
-                self.active_formatting_elements.reconstruct_if_any();
+                self.active_formatting_elements
+                    .reconstruct_if_any(&self.open_elements);
                 // Insert an HTML element for the token.
                 let element = self.insert_html_element_for_token(token);
                 // Push onto the list of active formatting elements that element.
@@ -470,7 +480,8 @@ impl<'a> Parser<'a> {
                     || name == "wbr" =>
             {
                 // Reconstruct the active formatting elements, if any.
-                self.active_formatting_elements.reconstruct_if_any();
+                self.active_formatting_elements
+                    .reconstruct_if_any(&self.open_elements);
                 // Insert an HTML element for the token.
                 self.insert_html_element_for_token(token);
                 // Immediately pop the current node off the stack of open elements.
@@ -482,7 +493,8 @@ impl<'a> Parser<'a> {
             }
             Token::StartTag { name, .. } if name == "input" => {
                 // Reconstruct the active formatting elements, if any.
-                self.active_formatting_elements.reconstruct_if_any();
+                self.active_formatting_elements
+                    .reconstruct_if_any(&self.open_elements);
 
                 // Insert an HTML element for the token.
                 self.insert_html_element_for_token(token);
@@ -542,7 +554,8 @@ impl<'a> Parser<'a> {
             }
             Token::StartTag { .. } => {
                 // Reconstruct the active formatting elements, if any.
-                self.active_formatting_elements.reconstruct_if_any();
+                self.active_formatting_elements
+                    .reconstruct_if_any(&self.open_elements);
                 // Insert an HTML element for the token.
                 self.insert_html_element_for_token(token);
             }
@@ -634,6 +647,7 @@ impl<'a> Parser<'a> {
 
             // 4.2 Increment outer loop counter by 1.
             outer_loop_counter += 1;
+
             // 4.3 Let formatting element be the last element in the list of active formatting elements that:
             //     * is between the end of the list and the last marker in the list, if any, or the start of the list otherwise, and
             //     * has the tag name subject.
