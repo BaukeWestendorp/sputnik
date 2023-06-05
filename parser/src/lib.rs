@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 
+use crate::namespace::Namespace;
 use dom::{Node, NodeType};
 use tokenizer::{Token, Tokenizer};
 use tree_construction::list_of_active_formatting_elements::ListOfActiveFormattingElements;
@@ -22,10 +23,7 @@ const fn is_parser_whitespace(string: char) -> bool {
 macro_rules! log_current_process {
     ($insertion_mode:expr, $token:expr) => {
         if std::env::var("PARSER_LOGGING").is_ok() {
-            eprintln!(
-                "\x1b[32m[Parser::InsertionMode::{:?}] {:?}\x1b[0m",
-                $insertion_mode, $token
-            );
+            eprintln!("\x1b[32m[{}] {:?}\x1b[0m", $insertion_mode, $token);
         }
     };
 }
@@ -68,7 +66,7 @@ impl<'a> Parser<'a> {
         insertion_mode: InsertionMode,
         token: &Token,
     ) {
-        log_current_process!(insertion_mode, token);
+        log_current_process!(format!("{:?}", insertion_mode), token);
 
         match insertion_mode {
             InsertionMode::Initial => self.handle_initial(token),
@@ -86,18 +84,21 @@ impl<'a> Parser<'a> {
     }
 
     // https://html.spec.whatwg.org/#parsing-main-inforeign
-    fn process_token_in_foreign_context(&'a self, token: &Token) {
-        log_current_process!(self.insertion_mode, token);
+    fn process_using_the_rules_for_foreign_content(&'a self, token: &Token) {
+        log_current_process!("Foreign Content", token);
 
         macro_rules! pop_invalid_elements {
-            () => {
+            ($name:expr) => {
                 // Parse error.
-                log_parser_error!();
+                log_parser_error!(format!("Invalid start tag '{}' in foreign context", $name));
 
-                // FIXME: While the current node is not a MathML text integration point, an HTML integration point, or an element in the HTML namespace, pop elements from the stack of open elements.
+                // While the current node is not FIXME(a MathML text integration point, an HTML integration point), or an element in the HTML namespace, pop elements from the stack of open elements.
+                while !self.open_elements.current_node().unwrap().is_element_with_namespace(Namespace::Html) {
+                    self.open_elements.pop();
+                }
 
                 // Reprocess the token according to the rules given in the section corresponding to the current insertion mode in HTML content.
-                self.process_token_using_the_rules_for(self.insertion_mode.get(), token);
+                self.process_token(token);
             };
         }
 
@@ -176,39 +177,100 @@ impl<'a> Parser<'a> {
                         attr.name == "color" || attr.name == "face" || attr.name == "size"
                     })) =>
             {
-                pop_invalid_elements!();
+                pop_invalid_elements!(name);
             }
             Token::EndTag { name, .. } if name == "br" || name == "P" => {
-                pop_invalid_elements!();
+                pop_invalid_elements!(name);
             }
-            Token::StartTag { .. } => todo!(),
+            Token::StartTag {
+                self_closing,
+                name,
+                self_closing_acknowledged,
+                ..
+            } => {
+                // FIXME: If the adjusted current node is an element in the MathML namespace, adjust MathML attributes for the token. (This fixes the case of MathML attributes that are not all lowercase.)
+                // FIXME: If the adjusted current node is an element in the SVG namespace, and the token's tag name is one of the ones in the first column of the following table, change the tag name to the name given in the corresponding cell in the second column. (This fixes the case of SVG elements that are not all lowercase.)
+                // FIXME: If the adjusted current node is an element in the SVG namespace, adjust SVG attributes for the token. (This fixes the case of SVG attributes that are not all lowercase.)
+                // FIXME: Adjust foreign attributes for the token. (This fixes the use of namespaced attributes, in particular XLink in SVG.)
+
+                // Insert a foreign element for the token, FIXME(in the same namespace as the adjusted current node).
+                self.insert_foreign_element_for_token(token, Namespace::Html);
+
+                // If the token has its self-closing flag set, then run the appropriate steps from the following list:
+                if *self_closing {
+                    // -> If the token's tag name is "script", FIXME(and the new current node is in the SVG namespace)
+                    if name == "script" {
+                        // Acknowledge the token's self-closing flag, FIXME(and then act as described in the steps for a "script" end tag below.)
+                        self_closing_acknowledged.set(true);
+                    }
+                    // -> Otherwise
+                    else {
+                        // Pop the current node off the stack of open elements and acknowledge the token's self-closing flag.
+                        self.open_elements.pop();
+                        self_closing_acknowledged.set(true);
+                    }
+                }
+            }
             Token::EndTag { name, .. } if name == "script" => {
                 // FIXME: if the current node is an SVG script element
                 todo!()
             }
             _ => {
                 // 1. Initialize node to be the current node (the bottommost node of the stack).
-                let node = self.open_elements.current_node().unwrap();
+                let mut node = self.open_elements.current_node().unwrap();
 
                 // 2. If node's tag name, converted to ASCII lowercase, is not the same as the tag name of the token, then this is a parse error.
                 if let Some(tag_name) = node.element_tag_name() {
-                    if !tag_name.eq_ignore_ascii_case(&token.tag_name().unwrap()) {
-                        log_parser_error!();
+                    let token_tag_name = token.tag_name().unwrap();
+                    if tag_name.to_ascii_lowercase() != token_tag_name {
+                        log_parser_error!(format!(
+                            "current node tag name '{}' is not the same as the token tag name '{}",
+                            tag_name.to_ascii_lowercase(),
+                            token_tag_name.to_ascii_lowercase()
+                        ));
                     }
                 }
 
-                // FIXME: 3. Loop: If node is the topmost element in the stack of open elements, then return. (fragment case)
-                // FIXME: 4. If node's tag name, converted to ASCII lowercase, is the same as the tag name of the token, pop elements from the stack of open elements until node has been popped from the stack, and then return.
-                // FIXME: 5. Set node to the previous entry in the stack of open elements.
-                // FIXME: 6. If node is not an element in the HTML namespace, return to the step labeled loop.
-                // FIXME: 7. Otherwise, process the token according to the rules given in the section corresponding to the current insertion mode in HTML content.
+                // 3. Loop: If node is the topmost element in the stack of open elements, then return. (fragment case)
+                for (i, _) in self
+                    .open_elements
+                    .elements
+                    .clone()
+                    .borrow()
+                    .iter()
+                    .enumerate()
+                {
+                    if self.open_elements.first().unwrap() == node {
+                        return;
+                    }
+                    // 4. If node's tag name, converted to ASCII lowercase, is the same as the tag name of the token, pop elements from the stack of open elements until node has been popped from the stack, and then return.
+                    if node.element_tag_name().unwrap().to_ascii_lowercase()
+                        == token.tag_name().unwrap()
+                    {
+                        self.open_elements
+                            .pop_elements_until_element_has_been_popped(node);
+                        return;
+                    }
+                    // 5. Set node to the previous entry in the stack of open elements.
+                    node = self.open_elements.elements.borrow()[i - 1];
+                    // 6. If node is not an element in the HTML namespace, return to the step labeled loop.
+                    if !node.is_element_with_namespace(Namespace::Html) {
+                        continue;
+                    }
+
+                    // 7. Otherwise, process the token according to the rules given in the section   corresponding to the current insertion mode in HTML content.
+                    self.process_token(token);
+                    return;
+                }
             }
         }
     }
 
     fn token_is_not_in_foreign_context(&self, token: &Token) -> bool {
+        // If the stack of open elements is empty
         self.open_elements.is_empty() ||
         // FIXME: If the adjusted current node is an element in the HTML namespace
+        self.open_elements.adjusted_current_node().unwrap().is_element_with_namespace(Namespace::Html) ||
         // FIXME: If the adjusted current node is a MathML text integration point and the token is a start tag whose tag name is neither "mglyph" nor "malignmark"
         // FIXME: If the adjusted current node is a MathML text integration point and the token is a character token
         // FIXME: If the adjusted current node is a MathML annotation-xml element and the token is a start tag whose tag name is "svg"
@@ -223,7 +285,7 @@ impl<'a> Parser<'a> {
             if self.token_is_not_in_foreign_context(token) {
                 self.process_token(token)
             } else {
-                self.process_token_in_foreign_context(token)
+                self.process_using_the_rules_for_foreign_content(token)
             };
         }
 

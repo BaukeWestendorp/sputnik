@@ -41,11 +41,12 @@ impl<'a> Parser<'a> {
             }
             Token::StartTag { name, .. } if name == "html" => {
                 // Create an element for the token in the HTML namespace, with the Document as the intended parent.
-                let element = self.create_element_for_token(token, Namespace::Html, &self.document);
+                let html_element =
+                    self.create_element_for_token(token, Namespace::Html, &self.document);
                 // Append it to the Document object.
-                self.document.append_child(element);
+                self.document.append_child(html_element);
                 // Put this element in the stack of open elements.
-                self.open_elements.push(element);
+                self.open_elements.push(html_element);
 
                 // Switch the insertion mode to "before head".
                 self.switch_insertion_mode_to(InsertionMode::BeforeHead);

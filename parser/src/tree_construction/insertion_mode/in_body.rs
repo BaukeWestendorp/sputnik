@@ -205,7 +205,7 @@ impl<'a> Parser<'a> {
                         }
                         // 3.3. Pop elements from the stack of open elements until an li element has been popped from the stack.
                         self.open_elements
-                            .pop_elements_until_element_has_been_popped("li");
+                            .pop_elements_until_element_with_tag_name_has_been_popped("li");
 
                         // 3.4. Jump to the step labeled done below.
                         break;
@@ -285,7 +285,7 @@ impl<'a> Parser<'a> {
                 }
                 // 3. Pop elements from the stack of open elements until an HTML element with the same tag name as the token has been popped from the stack.
                 self.open_elements
-                    .pop_elements_until_element_has_been_popped(name);
+                    .pop_elements_until_element_with_tag_name_has_been_popped(name);
             }
             Token::EndTag { name, .. } if name == "form" => {
                 // If there is no template element on the stack of open elements, then run these substeps:
@@ -357,7 +357,7 @@ impl<'a> Parser<'a> {
 
                 // 3. Pop elements from the stack of open elements until an li element has been popped from the stack.
                 self.open_elements
-                    .pop_elements_until_element_has_been_popped("li");
+                    .pop_elements_until_element_with_tag_name_has_been_popped("li");
             }
             Token::EndTag { name, .. } if name == "dd" || name == "dt" => {
                 todo!()
@@ -600,7 +600,7 @@ impl<'a> Parser<'a> {
 
         // Pop elements from the stack of open elements until a p element has been popped from the stack.
         self.open_elements
-            .pop_elements_until_element_has_been_popped("p");
+            .pop_elements_until_element_with_tag_name_has_been_popped("p");
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#adoption-agency-algorithm

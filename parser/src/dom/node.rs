@@ -1,11 +1,13 @@
 use std::cell::{Cell, Ref, RefCell};
 
+use crate::namespace::Namespace;
 use crate::types::{NodeLink, NodeRef};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeType {
     Element {
         tag_name: String,
+        namespace: Option<Namespace>,
     },
     Attr,
     Text {
@@ -43,7 +45,7 @@ impl<'a> Node<'a> {
     // https://dom.spec.whatwg.org/#dom-node-nodename
     pub fn node_name(&'a self) -> String {
         match &self.node_type {
-            NodeType::Element { tag_name } => {
+            NodeType::Element { tag_name, .. } => {
                 // FIXME: Implement propperly
                 tag_name.to_ascii_uppercase()
             }
@@ -200,21 +202,28 @@ impl<'a> Node<'a> {
 
     pub fn element_tag_name(&self) -> Option<String> {
         match &self.node_type {
-            NodeType::Element { tag_name } => Some(tag_name.to_string()),
+            NodeType::Element { tag_name, .. } => Some(tag_name.to_string()),
             _ => None,
         }
     }
 
     pub fn is_element_with_one_of_tags(&self, tags: &[&str]) -> bool {
-        if let NodeType::Element { tag_name } = &self.node_type {
+        if let NodeType::Element { tag_name, .. } = &self.node_type {
             return tags.contains(&tag_name.as_str());
         }
         false
     }
 
     pub fn is_element_with_tag(&self, tag: &str) -> bool {
-        if let NodeType::Element { tag_name } = &self.node_type {
+        if let NodeType::Element { tag_name, .. } = &self.node_type {
             return tag_name == tag;
+        }
+        false
+    }
+
+    pub fn is_element_with_namespace(&self, namespace: Namespace) -> bool {
+        if let NodeType::Element { namespace: ns, .. } = &self.node_type {
+            return Some(namespace) == *ns;
         }
         false
     }
@@ -259,7 +268,7 @@ impl<'a> PartialEq for Node<'a> {
             (NodeType::DocumentType { name: name_a, public_identifier: pub_id_a, system_identifier: sys_id_a} , NodeType::DocumentType { name: name_b, public_identifier: pub_id_b, system_identifier: sys_id_b} ) => {
                 name_a == name_b && pub_id_a == pub_id_b && sys_id_a == sys_id_b
             },
-            (NodeType::Element { tag_name: tag_name_a }, NodeType::Element { tag_name: tag_name_b }) => tag_name_a == tag_name_b, // FIXME: Implement
+            (NodeType::Element { tag_name: tag_name_a, namespace: namespace_a }, NodeType::Element { tag_name: tag_name_b, namespace: namespace_b }) => tag_name_a == tag_name_b && namespace_a == namespace_b, // FIXME: Implement
             (NodeType::Attr, NodeType::Attr) => todo!(),
             (NodeType::ProcessingInstruction, NodeType::ProcessingInstruction) => todo!(),
             (NodeType::Text { data: data_a }, NodeType::Text { data: data_b}) => data_a == data_b,

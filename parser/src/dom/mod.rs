@@ -13,7 +13,7 @@ impl<'a> Parser<'a> {
         &'a self,
         document: NodeRef<'a>,
         local_name: &String,
-        _namespace: Namespace,
+        namespace: Namespace,
         _prefix: Option<&String>,
         _is: Option<&String>,
         _synchronous_custom_elements: bool,
@@ -23,6 +23,7 @@ impl<'a> Parser<'a> {
             Some(document),
             NodeType::Element {
                 tag_name: local_name.to_owned(),
+                namespace: Some(namespace),
             },
         ))
     }

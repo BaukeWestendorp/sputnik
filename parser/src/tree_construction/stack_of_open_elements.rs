@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use crate::types::NodeRef;
 
 pub struct StackOfOpenElements<'a> {
-    pub(super) elements: RefCell<Vec<NodeRef<'a>>>,
+    pub(crate) elements: RefCell<Vec<NodeRef<'a>>>,
 }
 
 pub(super) static SPECIAL_TAGS: &[&str] = &[
@@ -129,8 +129,19 @@ impl<'a> StackOfOpenElements<'a> {
         }
     }
 
+    // https://html.spec.whatwg.org/#current-node
     pub fn current_node(&self) -> Option<NodeRef<'a>> {
         self.elements.borrow().last().copied()
+    }
+
+    // https://html.spec.whatwg.org/#adjusted-current-node
+    pub fn adjusted_current_node(&self) -> Option<NodeRef<'a>> {
+        // FIXME: Implement
+        self.current_node()
+    }
+
+    pub fn first(&self) -> Option<NodeRef<'a>> {
+        self.elements.borrow().first().copied()
     }
 
     pub fn push(&self, element: NodeRef<'a>) {
@@ -141,15 +152,18 @@ impl<'a> StackOfOpenElements<'a> {
         self.elements.borrow_mut().pop();
     }
 
-    pub fn pop_elements_until_element_has_been_popped(&self, tag_name: &str) {
-        let mut current = self.current_node();
-        while let Some(current_tag_name) = current.and_then(|c| c.element_tag_name()) {
+    pub fn pop_elements_until_element_with_tag_name_has_been_popped(&self, tag_name: &str) {
+        while !self.current_node().unwrap().is_element_with_tag(tag_name) {
             self.pop();
-            if tag_name == current_tag_name {
-                return;
-            }
-            current = self.current_node();
         }
+        self.pop()
+    }
+
+    pub fn pop_elements_until_element_has_been_popped(&self, node: NodeRef<'a>) {
+        while self.current_node() != Some(node) {
+            self.pop();
+        }
+        self.pop()
     }
 
     pub fn insert_immediately_below(&self, element: NodeRef<'a>, target: NodeRef<'a>) {

@@ -34,10 +34,12 @@ impl<'a> Parser<'a> {
             _ => {
                 // Pop the current node (which will be the head element) off the stack of open elements.
                 self.open_elements.pop();
+
                 // Switch the insertion mode to "after head".
                 self.switch_insertion_mode_to(InsertionMode::AfterHead);
+
                 // Reprocess the token.
-                self.process_token(token)
+                self.process_token(token);
             }
         }
     }
