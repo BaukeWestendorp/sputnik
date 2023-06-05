@@ -170,7 +170,6 @@ impl<'a> Parser<'a> {
                 if self
                     .open_elements
                     .current_node()
-                    .unwrap()
                     .is_element_with_one_of_tags(&["h1", "h2", "h3", "h4", "h5", "h6"])
                 {
                     log_parser_error!(format!("unexpected '{}': can't nest header tags.", name));
@@ -201,7 +200,7 @@ impl<'a> Parser<'a> {
                 // and, if there is no template element on the stack of open elements,
                 if self.open_elements.contains_one_of_tags(&["template"]) {
                     // set the form element pointer to point to the element created.
-                    self.form_element.set(self.open_elements.current_node());
+                    self.form_element.set(Some(self.current_node()));
                 }
             }
             Token::StartTag { name, .. } if name == "li" => {
@@ -215,12 +214,7 @@ impl<'a> Parser<'a> {
                         // 3.1. Generate implied end tags, except for li elements.
                         self.generate_implied_end_tags_except_for(Some("li"));
                         // 3.2. If the current node is not an li element, then this is a parse error.
-                        if !self
-                            .open_elements
-                            .current_node()
-                            .unwrap()
-                            .is_element_with_tag("li")
-                        {
+                        if !self.open_elements.current_node().is_element_with_tag("li") {
                             log_parser_error!();
                         }
                         // 3.3. Pop elements from the stack of open elements until an li element has been popped from the stack.
@@ -302,7 +296,6 @@ impl<'a> Parser<'a> {
                 if !self
                     .open_elements
                     .current_node()
-                    .unwrap()
                     .is_element_with_tag(token.tag_name().unwrap().as_str())
                 {
                     // then this is a parse error.
@@ -330,7 +323,7 @@ impl<'a> Parser<'a> {
                     // 4. Generate implied end tags.
                     self.generate_implied_end_tags_except_for(None);
                     // 5. If the current node is not node,
-                    if self.open_elements.current_node().unwrap() == node.unwrap() {
+                    if self.current_node() == node.unwrap() {
                         // then this is a parse error.
                         log_parser_error!();
                     }
@@ -372,12 +365,7 @@ impl<'a> Parser<'a> {
                 self.generate_implied_end_tags_except_for(Some("li"));
 
                 // 2. If the current node is not an li element, then this is a parse error.
-                if !self
-                    .open_elements
-                    .current_node()
-                    .unwrap()
-                    .is_element_with_tag("li")
-                {
+                if !self.open_elements.current_node().is_element_with_tag("li") {
                     log_parser_error!();
                 }
 
@@ -412,12 +400,7 @@ impl<'a> Parser<'a> {
                 self.generate_implied_end_tags_except_for(None);
 
                 // 2. If the current node is not an HTML element with the same tag name as that of the token, then this is a parse error.
-                if !self
-                    .open_elements
-                    .current_node()
-                    .unwrap()
-                    .is_element_with_tag(name)
-                {
+                if !self.open_elements.current_node().is_element_with_tag(name) {
                     log_parser_error!();
                 }
 
@@ -608,7 +591,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn in_body_any_other_end_tag(&self, token: &Token) {
+    fn in_body_any_other_end_tag(&'a self, token: &Token) {
         // 1. Initialize node to be the current node (the bottommost node of the stack).
         for node in self.open_elements.elements.clone().borrow().iter().rev() {
             // 2. Loop: If node is an HTML element with the same tag name as the token, then:
@@ -617,11 +600,11 @@ impl<'a> Parser<'a> {
                 // 2.1. Generate implied end tags, except for HTML elements with the same tag name as the token.
                 self.generate_implied_end_tags_except_for(Some(&token_tag_name));
                 // 2.2. If node is not the current node, then this is a parse error.
-                if *node == self.open_elements.current_node().unwrap() {
+                if *node == self.current_node() {
                     log_parser_error!();
                 }
                 // 2.3. Pop all the nodes from the current node up to node, including node,
-                while *node == self.open_elements.current_node().unwrap() {
+                while *node == self.current_node() {
                     self.open_elements.pop();
                 }
                 // then stop these steps.
@@ -642,17 +625,12 @@ impl<'a> Parser<'a> {
     }
 
     // https://html.spec.whatwg.org/multipage/parsing.html#close-a-p-element
-    fn close_a_p_element(&self) {
+    fn close_a_p_element(&'a self) {
         // Generate implied end tags, except for p elements.
         self.generate_implied_end_tags_except_for(Some("p"));
 
         // If the current node is not a p element, then this is a parse error.
-        if !self
-            .open_elements
-            .current_node()
-            .unwrap()
-            .is_element_with_tag("p")
-        {
+        if !self.open_elements.current_node().is_element_with_tag("p") {
             log_parser_error!();
         }
 
@@ -670,11 +648,10 @@ impl<'a> Parser<'a> {
         if self
             .open_elements
             .current_node()
-            .unwrap()
             .is_element_with_tag(&subject)
             && !self
                 .active_formatting_elements
-                .contains(self.open_elements.current_node().unwrap())
+                .contains(self.current_node())
         {
             self.open_elements.pop();
             return;
@@ -725,7 +702,7 @@ impl<'a> Parser<'a> {
             }
 
             // 4.6 If formatting element is not the current node,
-            if formatting_element != self.open_elements.current_node().unwrap() {
+            if formatting_element != self.current_node() {
                 // this is a parse error. (But do not return.)
                 log_parser_error!();
             }
@@ -737,7 +714,7 @@ impl<'a> Parser<'a> {
 
             // 4.8 If there is no furthest block, then the UA must first pop all the nodes from the bottom of the stack of open elements, from the current node up to and including formatting element,
             if furthest_block.is_none() {
-                while formatting_element != self.open_elements.current_node().unwrap() {
+                while formatting_element != self.current_node() {
                     self.open_elements.pop();
                 }
                 self.open_elements.pop();

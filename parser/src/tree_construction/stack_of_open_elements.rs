@@ -130,12 +130,12 @@ impl<'a> StackOfOpenElements<'a> {
     }
 
     // https://html.spec.whatwg.org/#current-node
-    pub fn current_node(&self) -> Option<NodeRef<'a>> {
-        self.elements.borrow().last().copied()
+    pub fn current_node(&self) -> NodeRef<'a> {
+        self.elements.borrow().last().copied().expect("should always have a current node, as the parser will have finished after popping the last (html) element.")
     }
 
     // https://html.spec.whatwg.org/#adjusted-current-node
-    pub fn adjusted_current_node(&self) -> Option<NodeRef<'a>> {
+    pub fn adjusted_current_node(&self) -> NodeRef<'a> {
         // FIXME: Implement
         self.current_node()
     }
@@ -153,7 +153,7 @@ impl<'a> StackOfOpenElements<'a> {
     }
 
     pub fn pop_elements_until_element_with_tag_name_has_been_popped(&self, tag_name: &str) {
-        while !self.current_node().unwrap().is_element_with_tag(tag_name) {
+        while !self.current_node().is_element_with_tag(tag_name) {
             self.pop();
         }
         self.pop()
@@ -163,18 +163,14 @@ impl<'a> StackOfOpenElements<'a> {
         &self,
         tag_names: &[&str],
     ) {
-        while !self
-            .current_node()
-            .unwrap()
-            .is_element_with_one_of_tags(tag_names)
-        {
+        while !self.current_node().is_element_with_one_of_tags(tag_names) {
             self.pop();
         }
         self.pop()
     }
 
     pub fn pop_elements_until_element_has_been_popped(&self, node: NodeRef<'a>) {
-        while self.current_node() != Some(node) {
+        while self.current_node() != node {
             self.pop();
         }
         self.pop()

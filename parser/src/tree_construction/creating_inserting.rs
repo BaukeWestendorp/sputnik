@@ -38,10 +38,7 @@ impl<'a> Parser<'a> {
             // 1. If there was an override target specified, then let target be the override target.
             Some(override_target) => override_target,
             // Otherwise, let target be the current node.
-            None => self
-                .open_elements
-                .current_node()
-                .expect("There will always be an html element on the stack"),
+            None => self.open_elements.current_node(),
         };
 
         // 2. Determine the adjusted insertion location using the first matching steps from the following list:

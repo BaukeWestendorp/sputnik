@@ -93,6 +93,10 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub(crate) fn current_node(&'a self) -> NodeRef<'a> {
+        self.open_elements.current_node()
+    }
+
     fn process_token(&'a self, token: &Token) {
         self.process_token_using_the_rules_for(self.insertion_mode.get(), token);
     }
@@ -134,7 +138,7 @@ impl<'a> Parser<'a> {
                 log_parser_error!(format!("Invalid start tag '{}' in foreign context", $name));
 
                 // While the current node is not FIXME(a MathML text integration point, an HTML integration point), or an element in the HTML namespace, pop elements from the stack of open elements.
-                while !self.open_elements.current_node().unwrap().is_element_with_namespace(Namespace::Html) {
+                while !self.current_node().is_element_with_namespace(Namespace::Html) {
                     self.open_elements.pop();
                 }
 
@@ -258,7 +262,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 // 1. Initialize node to be the current node (the bottommost node of the stack).
-                let mut node = self.open_elements.current_node().unwrap();
+                let mut node = self.current_node();
 
                 // 2. If node's tag name, converted to ASCII lowercase, is not the same as the tag name of the token, then this is a parse error.
                 if let Some(tag_name) = node.element_tag_name() {
@@ -311,7 +315,7 @@ impl<'a> Parser<'a> {
         // If the stack of open elements is empty
         self.open_elements.is_empty() ||
         // FIXME: If the adjusted current node is an element in the HTML namespace
-        self.open_elements.adjusted_current_node().unwrap().is_element_with_namespace(Namespace::Html) ||
+        self.open_elements.adjusted_current_node().is_element_with_namespace(Namespace::Html) ||
         // FIXME: If the adjusted current node is a MathML text integration point and the token is a start tag whose tag name is neither "mglyph" nor "malignmark"
         // FIXME: If the adjusted current node is a MathML text integration point and the token is a character token
         // FIXME: If the adjusted current node is a MathML annotation-xml element and the token is a start tag whose tag name is "svg"
