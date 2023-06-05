@@ -158,7 +158,25 @@ impl<'a> Parser<'a> {
                     || name == "h5"
                     || name == "h6" =>
             {
-                todo!()
+                // If the stack of open elements has a p element in button scope, then close a p element.
+                if self
+                    .open_elements
+                    .has_element_with_tag_name_in_button_scope("p")
+                {
+                    self.close_a_p_element()
+                }
+
+                // If the current node is an HTML element whose tag name is one of "h1", "h2", "h3", "h4", "h5", or "h6", then this is a parse error; pop the current node off the stack of open elements.
+                if self
+                    .open_elements
+                    .current_node()
+                    .unwrap()
+                    .is_element_with_one_of_tags(&["h1", "h2", "h3", "h4", "h5", "h6"])
+                {
+                    log_parser_error!(format!("unexpected '{}': can't nest header tags.", name));
+                    self.open_elements.pop();
+                }
+                // Insert an HTML element for the token.
             }
             Token::StartTag { name, .. } if name == "pre" || name == "listing" => todo!(),
             Token::StartTag { name, .. } if name == "form" => {
@@ -378,7 +396,34 @@ impl<'a> Parser<'a> {
                     || name == "h5"
                     || name == "h6" =>
             {
-                todo!()
+                let header_tags = &["h1", "h2", "h3", "h4", "h5", "h6"];
+
+                // If the stack of open elements does not have an element in scope that is an HTML element and whose tag name is one of "h1", "h2", "h3", "h4", "h5", or "h6", then this is a parse error; ignore the token.
+                if !self
+                    .open_elements
+                    .has_element_with_one_of_tag_names_in_scope(header_tags)
+                {
+                    log_parser_error!();
+                    return;
+                }
+
+                // Otherwise, run these steps:
+                // 1. Generate implied end tags.
+                self.generate_implied_end_tags_except_for(None);
+
+                // 2. If the current node is not an HTML element with the same tag name as that of the token, then this is a parse error.
+                if !self
+                    .open_elements
+                    .current_node()
+                    .unwrap()
+                    .is_element_with_tag(name)
+                {
+                    log_parser_error!();
+                }
+
+                // 3. Pop elements from the stack of open elements until an HTML element whose tag name is one of "h1", "h2", "h3", "h4", "h5", or "h6" has been popped from the stack.
+                self.open_elements
+                    .pop_elements_until_element_with_one_of_tag_names_has_been_popped(header_tags);
             }
             Token::StartTag { name, .. } if name == "a" => {
                 use list_of_active_formatting_elements::Position;

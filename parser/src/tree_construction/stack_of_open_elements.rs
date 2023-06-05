@@ -159,6 +159,20 @@ impl<'a> StackOfOpenElements<'a> {
         self.pop()
     }
 
+    pub fn pop_elements_until_element_with_one_of_tag_names_has_been_popped(
+        &self,
+        tag_names: &[&str],
+    ) {
+        while !self
+            .current_node()
+            .unwrap()
+            .is_element_with_one_of_tags(tag_names)
+        {
+            self.pop();
+        }
+        self.pop()
+    }
+
     pub fn pop_elements_until_element_has_been_popped(&self, node: NodeRef<'a>) {
         while self.current_node() != Some(node) {
             self.pop();
@@ -270,6 +284,14 @@ impl<'a> StackOfOpenElements<'a> {
     // https://html.spec.whatwg.org/multipage/parsing.html#has-an-element-in-scope
     pub fn has_element_with_tag_name_in_scope(&self, tag_name: &str) -> bool {
         self.has_tag_name_in_scope(tag_name, BASE_SCOPE_TAGS)
+    }
+
+    pub fn has_element_with_one_of_tag_names_in_scope(&self, tag_names: &[&str]) -> bool {
+        self.elements
+            .borrow()
+            .iter()
+            .rev()
+            .any(|node| node.is_element_with_one_of_tags(tag_names))
     }
 
     // https://html.spec.whatwg.org/#has-an-element-in-list-item-scope
