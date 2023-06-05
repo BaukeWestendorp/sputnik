@@ -66,7 +66,8 @@ impl<'a> Parser<'a> {
                 if (name == "noscript" && self.scripting)
                     || (name == "noframes" || name == "style") =>
             {
-                todo!()
+                // Follow the generic raw text element parsing algorithm.
+                self.follow_generic_parsing_algorithm(GenericParsingAlgorithm::RawText, token);
             }
             Token::StartTag { name, .. } if name == "noscript" && !self.scripting => {
                 // Insert an HTML element for the token.
