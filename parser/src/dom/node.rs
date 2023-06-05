@@ -280,7 +280,7 @@ impl<'a> Node<'a> {
                 }
                 format!("{yellow}{} {}{reset}", self.node_name(), attr_string)
             }
-            _ => self.node_name(),
+            _ => format!("{gray}{}{reset}", self.node_name()),
         };
         println!("{indentation}{}", opening);
         for child in self.child_nodes().iter() {
