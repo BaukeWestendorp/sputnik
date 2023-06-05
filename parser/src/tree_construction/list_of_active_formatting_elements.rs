@@ -64,13 +64,12 @@ impl<'a> ListOfActiveFormattingElements<'a> {
     }
 
     pub fn remove(&self, element: NodeRef<'a>) {
-        if let Some(index) = self
-            .elements
-            .borrow_mut()
+        let mut elements = self.elements.borrow_mut();
+        if let Some(index) = elements
             .iter()
             .position(|e| *e == ActiveFormattingElement::Element(element))
         {
-            self.elements.borrow_mut().remove(index);
+            elements.remove(index);
         }
     }
 
