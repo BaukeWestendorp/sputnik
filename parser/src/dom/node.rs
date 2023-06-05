@@ -239,21 +239,46 @@ impl<'a> Node<'a> {
     fn internal_dump(&'a self, indentation: &str, settings: &NodeDumpSettings) {
         let indent = "  ";
 
-        let opening = match &self.node_type {
-            NodeType::DocumentType { name, .. } => format!("DOCTYPE {}", name),
-            NodeType::Text { data } => format!("{}: \"{}\"", self.node_name(), {
-                let data = data.borrow().clone();
-                match settings.trim_text {
-                    true => data.trim().to_string(),
-                    false => data.clone(),
+        macro_rules! color {
+            ($color:literal) => {
+                if settings.color {
+                    $color
+                } else {
+                    ""
                 }
-            }),
+            };
+        }
+
+        let yellow = color!("\x1b[33m");
+        let blue = color!("\x1b[34m");
+        let cyan = color!("\x1b[36m");
+        let white = color!("\x1b[37m");
+        let reset = color!("\x1b[0m");
+        let green = color!("\x1b[32m");
+        let gray = color!("\x1b[90m");
+
+        let opening = match &self.node_type {
+            NodeType::DocumentType { name, .. } => {
+                format!("{yellow}DOCTYPE {white}{}{reset}", name)
+            }
+            NodeType::Text { data } => {
+                format!("{gray}{}: \"{white}{}{gray}\"{reset}", self.node_name(), {
+                    let data = data.borrow().clone();
+                    match settings.trim_text {
+                        true => data.trim().to_string(),
+                        false => data.clone(),
+                    }
+                })
+            }
             NodeType::Element { attributes, .. } => {
                 let mut attr_string = String::new();
                 for attr in attributes.borrow().iter() {
-                    attr_string.push_str(&format!("{}=\"{}\" ", attr.name, attr.value));
+                    attr_string.push_str(&format!(
+                        "{cyan}{}{gray}{blue}={gray}\"{green}{}{gray}\" ",
+                        attr.name, attr.value
+                    ));
                 }
-                format!("{} {}", self.node_name(), attr_string)
+                format!("{yellow}{} {}{reset}", self.node_name(), attr_string)
             }
             _ => self.node_name(),
         };
@@ -344,6 +369,7 @@ impl<'a> PartialEq for Node<'a> {
 
 pub struct NodeDumpSettings {
     closing_marker: Option<&'static str>,
+    color: bool,
     trim_text: bool,
 }
 
@@ -351,6 +377,7 @@ impl Default for NodeDumpSettings {
     fn default() -> Self {
         Self {
             closing_marker: None,
+            color: true,
             trim_text: true,
         }
     }
