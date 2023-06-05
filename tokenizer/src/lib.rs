@@ -279,6 +279,10 @@ impl Tokenizer {
         self.state = state;
     }
 
+    pub fn state(&self) -> State {
+        self.state
+    }
+
     fn switch_to_return_state(&mut self) {
         if let Some(return_state) = self.return_state {
             self.switch_to(return_state);

@@ -38,6 +38,7 @@ enum GenericParsingAlgorithm {
 pub struct Parser<'a> {
     arena: Arena<Node<'a>>,
     tokenizer: RefCell<Tokenizer>,
+    new_tokenizer_state: Cell<Option<tokenizer::State>>,
     document: Node<'a>,
     insertion_mode: Cell<InsertionMode>,
     original_insertion_mode: Cell<Option<InsertionMode>>,
@@ -54,6 +55,7 @@ impl<'a> Parser<'a> {
         Self {
             arena,
             tokenizer: RefCell::new(Tokenizer::new(input)),
+            new_tokenizer_state: Cell::new(None),
             document: Node::new(None, NodeType::Document),
             insertion_mode: Cell::new(InsertionMode::Initial),
             original_insertion_mode: Cell::new(None),
@@ -86,6 +88,7 @@ impl<'a> Parser<'a> {
             InsertionMode::InBody => self.handle_in_body(token),
             InsertionMode::AfterBody => self.handle_after_body(token),
             InsertionMode::AfterAfterBody => self.handle_after_after_body(token),
+            InsertionMode::Text => self.handle_text(token),
             _ => todo!("{:?}", insertion_mode),
         }
     }
@@ -106,13 +109,10 @@ impl<'a> Parser<'a> {
         // 2. If the algorithm that was invoked is the generic raw text element parsing algorithm, switch the tokenizer to the RAWTEXT state; otherwise the algorithm invoked was the generic RCDATA element parsing algorithm, switch the tokenizer to the RCDATA state.
         match algorithm {
             GenericParsingAlgorithm::RawText => self
-                .tokenizer
-                .borrow_mut()
-                .switch_to(tokenizer::State::RawText),
+                .new_tokenizer_state
+                .set(Some(tokenizer::State::RawText)),
             GenericParsingAlgorithm::RcData => {
-                self.tokenizer
-                    .borrow_mut()
-                    .switch_to(tokenizer::State::RcData);
+                self.new_tokenizer_state.set(Some(tokenizer::State::RcData));
             }
         }
 
@@ -322,12 +322,18 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse(&'a self) -> Node<'a> {
-        while let Some(token) = self.tokenizer.borrow_mut().next_token() {
+        let mut tokenizer = self.tokenizer.borrow_mut();
+        while let Some(token) = tokenizer.next_token() {
             if self.token_is_not_in_foreign_context(token) {
                 self.process_token(token)
             } else {
                 self.process_using_the_rules_for_foreign_content(token)
             };
+
+            if let Some(new_tokenizer_state) = self.new_tokenizer_state.get() {
+                tokenizer.switch_to(new_tokenizer_state);
+                self.new_tokenizer_state.set(None);
+            }
         }
 
         self.document.clone()

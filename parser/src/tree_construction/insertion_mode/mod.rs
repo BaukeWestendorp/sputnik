@@ -9,6 +9,7 @@ pub(crate) mod before_html;
 pub(crate) mod in_body;
 pub(crate) mod in_head;
 pub(crate) mod initial;
+pub(crate) mod text;
 
 #[macro_export]
 macro_rules! log_parser_error {
