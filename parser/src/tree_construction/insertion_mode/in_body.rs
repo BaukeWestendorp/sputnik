@@ -610,7 +610,7 @@ impl<'a> Parser<'a> {
 
     fn in_body_any_other_end_tag(&self, token: &Token) {
         // 1. Initialize node to be the current node (the bottommost node of the stack).
-        for node in self.open_elements.elements.borrow().iter().rev() {
+        for node in self.open_elements.elements.clone().borrow().iter().rev() {
             // 2. Loop: If node is an HTML element with the same tag name as the token, then:
             let token_tag_name = token.tag_name().expect("token should be EndTag");
             if node.is_element_with_tag(&token_tag_name) {
