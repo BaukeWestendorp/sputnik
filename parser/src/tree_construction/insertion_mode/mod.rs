@@ -26,7 +26,7 @@ macro_rules! log_parser_error {
 }
 
 impl<'a> Parser<'a> {
-    fn switch_insertion_mode_to(&self, insertion_mode: InsertionMode) {
+    pub(crate) fn switch_insertion_mode_to(&self, insertion_mode: InsertionMode) {
         self.insertion_mode.set(insertion_mode)
     }
 }

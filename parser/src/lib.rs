@@ -28,11 +28,19 @@ macro_rules! log_current_process {
     };
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
+#[allow(unused)]
+enum GenericParsingAlgorithm {
+    RawText,
+    RcData,
+}
+
 pub struct Parser<'a> {
     arena: Arena<Node<'a>>,
     tokenizer: RefCell<Tokenizer>,
     document: Node<'a>,
     insertion_mode: Cell<InsertionMode>,
+    original_insertion_mode: Cell<Option<InsertionMode>>,
     open_elements: StackOfOpenElements<'a>,
     active_formatting_elements: ListOfActiveFormattingElements<'a>,
     head_element: NodeLink<'a>,
@@ -48,6 +56,7 @@ impl<'a> Parser<'a> {
             tokenizer: RefCell::new(Tokenizer::new(input)),
             document: Node::new(None, NodeType::Document),
             insertion_mode: Cell::new(InsertionMode::Initial),
+            original_insertion_mode: Cell::new(None),
             open_elements: StackOfOpenElements::new(),
             active_formatting_elements: ListOfActiveFormattingElements::new(),
             head_element: Cell::new(None),
@@ -83,6 +92,36 @@ impl<'a> Parser<'a> {
 
     fn process_token(&'a self, token: &Token) {
         self.process_token_using_the_rules_for(self.insertion_mode.get(), token);
+    }
+
+    // https://html.spec.whatwg.org/multipage/parsing.html#generic-rcdata-element-parsing-algorithm
+    fn follow_generic_parsing_algorithm(
+        &'a self,
+        algorithm: GenericParsingAlgorithm,
+        token: &Token,
+    ) {
+        // 1. Insert an HTML element for the token.
+        self.insert_html_element_for_token(token);
+
+        // 2. If the algorithm that was invoked is the generic raw text element parsing algorithm, switch the tokenizer to the RAWTEXT state; otherwise the algorithm invoked was the generic RCDATA element parsing algorithm, switch the tokenizer to the RCDATA state.
+        match algorithm {
+            GenericParsingAlgorithm::RawText => self
+                .tokenizer
+                .borrow_mut()
+                .switch_to(tokenizer::State::RawText),
+            GenericParsingAlgorithm::RcData => {
+                self.tokenizer
+                    .borrow_mut()
+                    .switch_to(tokenizer::State::RcData);
+            }
+        }
+
+        // 3. Let the original insertion mode be the current insertion mode.
+        self.original_insertion_mode
+            .set(Some(self.insertion_mode.get()));
+
+        // 4. Then, switch the insertion mode to "text".
+        self.switch_insertion_mode_to(InsertionMode::Text);
     }
 
     // https://html.spec.whatwg.org/#parsing-main-inforeign

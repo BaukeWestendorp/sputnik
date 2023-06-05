@@ -1,7 +1,7 @@
 use tokenizer::Token;
 
 use crate::types::InsertionMode;
-use crate::{is_parser_whitespace, log_parser_error, Parser};
+use crate::{is_parser_whitespace, log_parser_error, GenericParsingAlgorithm, Parser};
 
 impl<'a> Parser<'a> {
     pub(crate) fn handle_in_head(&'a self, token: &Token) {
@@ -59,7 +59,9 @@ impl<'a> Parser<'a> {
 
                 // FIXME: If the active speculative HTML parser is null, then:
             }
-            Token::StartTag { name, .. } if name == "title" => todo!(),
+            Token::StartTag { name, .. } if name == "title" => {
+                self.follow_generic_parsing_algorithm(GenericParsingAlgorithm::RcData, token);
+            }
             Token::StartTag { name, .. }
                 if (name == "noscript" && self.scripting)
                     || (name == "noframes" || name == "style") =>
