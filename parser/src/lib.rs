@@ -75,6 +75,8 @@ impl<'a> Parser<'a> {
             InsertionMode::InHead => self.handle_in_head(token),
             InsertionMode::AfterHead => self.handle_after_head(token),
             InsertionMode::InBody => self.handle_in_body(token),
+            InsertionMode::AfterBody => self.handle_after_body(token),
+            InsertionMode::AfterAfterBody => self.handle_after_after_body(token),
             _ => todo!("{:?}", insertion_mode),
         }
     }

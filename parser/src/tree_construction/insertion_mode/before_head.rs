@@ -5,18 +5,20 @@ use crate::{is_parser_whitespace, log_parser_error, Parser};
 
 impl<'a> Parser<'a> {
     pub(crate) fn handle_before_head(&'a self, token: &Token) {
-        let anything_else = || {
-            // Insert an HTML element for a "head" start tag token with no attributes.
-            let head_element = self.insert_html_element_for_start_tag("head");
+        macro_rules! anything_else {
+            () => {
+                // Insert an HTML element for a "head" start tag token with no attributes.
+                let head_element = self.insert_html_element_for_start_tag("head");
 
-            // Set the head element pointer to the newly created head element.
-            self.head_element.set(Some(head_element));
+                // Set the head element pointer to the newly created head element.
+                self.head_element.set(Some(head_element));
 
-            // Switch the insertion mode to "in head".
-            self.switch_insertion_mode_to(InsertionMode::InHead);
-            // Reprocess the current token.
-            self.process_token(token);
-        };
+                // Switch the insertion mode to "in head".
+                self.switch_insertion_mode_to(InsertionMode::InHead);
+                // Reprocess the current token.
+                self.process_token(token);
+            };
+        }
 
         match token {
             Token::Character { data } if is_parser_whitespace(*data) => {
@@ -45,13 +47,15 @@ impl<'a> Parser<'a> {
             Token::EndTag { name, .. }
                 if name == "head" || name == "body" || name == "html" || name == "br" =>
             {
-                anything_else()
+                anything_else!();
             }
             Token::EndTag { .. } => {
                 // Parse error. Ignore the token.
                 log_parser_error!();
             }
-            _ => anything_else(),
+            _ => {
+                anything_else!();
+            }
         }
     }
 }

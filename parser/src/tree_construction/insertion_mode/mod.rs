@@ -1,6 +1,8 @@
 use crate::types::InsertionMode;
 use crate::Parser;
 
+pub(crate) mod after_after_body;
+pub(crate) mod after_body;
 pub(crate) mod after_head;
 pub(crate) mod before_head;
 pub(crate) mod before_html;
