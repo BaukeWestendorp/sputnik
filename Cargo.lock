@@ -3,9 +3,22 @@
 version = 3
 
 [[package]]
+name = "layout"
+version = "0.1.0"
+
+[[package]]
 name = "parser"
 version = "0.1.0"
 dependencies = [
+ "tokenizer",
+ "typed-arena",
+]
+
+[[package]]
+name = "sputnik"
+version = "0.1.0"
+dependencies = [
+ "parser",
  "tokenizer",
  "typed-arena",
 ]

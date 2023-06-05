@@ -1,0 +1,9 @@
+[package]
+name = "sputnik"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokenizer = { path = "../tokenizer"}
+parser = { path = "../parser"}
+typed-arena = "2.0.2"
