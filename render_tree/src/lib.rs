@@ -12,7 +12,29 @@ pub enum RenderObject<'a> {
     },
 }
 
-fn node_is_valid<'a>(node: &Node<'a>) -> bool {
+impl<'a> RenderObject<'a> {
+    pub fn element(&self) -> Option<&Node<'a>> {
+        match self {
+            RenderObject::Text(_) => None,
+            RenderObject::Element { element, .. } => Some(element),
+        }
+    }
+
+    pub fn children(&self) -> Vec<RenderObject<'a>> {
+        match self {
+            RenderObject::Text(_) => vec![],
+            RenderObject::Element { children, .. } => children.clone(),
+        }
+    }
+
+    pub(crate) fn append_child_if_possible(&mut self, child: RenderObject<'a>) {
+        if let RenderObject::Element { children, .. } = self {
+            children.push(child)
+        }
+    }
+}
+
+pub(crate) fn node_is_valid(node: &Node<'_>) -> bool {
     match &node.node_type {
         NodeType::Element(element) => {
             element.tag_name != "head"
@@ -26,22 +48,6 @@ fn node_is_valid<'a>(node: &Node<'a>) -> bool {
     }
 }
 
-fn next_valid_render_tree_descendant<'a>(node: &Node<'a>) -> Option<&'a Node<'a>> {
-    let mut valid_child = None;
-    for child in node.child_nodes().iter() {
-        if node_is_valid(child) {
-            valid_child = Some(child.clone());
-            break;
-        }
-
-        if let Some(next_valid_child) = next_valid_render_tree_descendant(child) {
-            valid_child = Some(next_valid_child);
-            break;
-        }
-    }
-    valid_child
-}
-
 impl<'a> From<Node<'a>> for RenderObject<'a> {
     fn from(node: Node<'a>) -> Self {
         let mut render_object = RenderObject::Element {
@@ -49,39 +55,34 @@ impl<'a> From<Node<'a>> for RenderObject<'a> {
             children: vec![],
         };
 
+        // eprintln!("Node {:?}", node.node_type);
+
         if node_is_valid(&node) {
-            match &node.node_type {
-                NodeType::Element { .. } => {
-                    for child in node.child_nodes().iter() {
-                        if node_is_valid(child) {
+            for child in node.child_nodes().iter() {
+                if node_is_valid(child) {
+                    match &child.node_type {
+                        NodeType::Element(_) => {
                             render_object.append_child_if_possible(RenderObject::from(
                                 <&Node<'_>>::clone(child).clone(),
                             ));
                         }
+                        NodeType::Text { data } => {
+                            render_object.append_child_if_possible(RenderObject::Text(
+                                data.borrow().clone(),
+                            ));
+                        }
+                        _ => {}
                     }
                 }
-                NodeType::Text { data } => {
-                    render_object
-                        .append_child_if_possible(RenderObject::Text(data.borrow().clone()));
-                }
-                _ => {}
             }
         } else {
             for child in node.child_nodes().iter() {
                 if node_is_valid(child) {
-                    render_object = RenderObject::from(child.clone().clone());
+                    render_object = RenderObject::from(<&Node<'_>>::clone(child).clone());
                 }
             }
         }
 
         render_object.clone()
-    }
-}
-
-impl<'a> RenderObject<'a> {
-    fn append_child_if_possible(&mut self, child: RenderObject<'a>) {
-        if let RenderObject::Element { children, .. } = self {
-            children.push(child)
-        }
     }
 }
