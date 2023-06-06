@@ -1,4 +1,4 @@
-use dom::node::{Node, NodeType};
+use dom::node::{DumpSettings, Node, NodeType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderObject<'a> {
@@ -11,24 +11,51 @@ pub enum RenderObject<'a> {
 }
 
 impl RenderObject<'_> {
-    pub fn dump(&self) {
-        self.internal_dump("");
+    pub fn dump(&self, settings: DumpSettings) {
+        self.internal_dump("", settings);
     }
 
-    fn internal_dump(&self, indentation: &str) {
+    fn internal_dump(&self, indentation: &str, settings: DumpSettings) {
+        macro_rules! color {
+            ($color:literal) => {
+                if settings.color {
+                    $color
+                } else {
+                    ""
+                }
+            };
+        }
+
+        let yellow = color!("\x1b[33m");
+        let white = color!("\x1b[37m");
+        let reset = color!("\x1b[0m");
+        let gray = color!("\x1b[90m");
+
         let opening = match self {
-            RenderObject::Text(data) => format!("{indentation}#text \"{}\"", data.trim()),
+            RenderObject::Text(data) => {
+                format!("{gray}#text \"{white}{}{gray}\"{reset}", {
+                    match settings.trim_text {
+                        true => data.trim().to_string(),
+                        false => data.clone(),
+                    }
+                })
+            }
             RenderObject::Element { element, .. } => {
-                format!("{indentation}{}", element.node_name())
+                format!("{yellow}{}{reset}", element.node_name())
             }
         };
+
         println!("{indentation}{}", opening);
         if let RenderObject::Element { children, .. } = self {
             for child in children.iter() {
                 let mut indentation = indentation.to_string();
                 indentation.push_str("  ");
-                child.internal_dump(&indentation);
+                child.internal_dump(&indentation, settings);
             }
+        }
+
+        if let Some(closing_marker) = settings.closing_marker {
+            println!("{indentation}{closing_marker}");
         }
     }
 }
@@ -86,7 +113,6 @@ impl<'a> From<Node<'a>> for RenderObject<'a> {
                 _ => {}
             }
         } else {
-            eprintln!("node: {:?}", node.node_name());
             while let Some(next_sibling) = node.next_sibling() {
                 if let Some(next_valid_child) = next_valid_child(next_sibling) {
                     render_object = RenderObject::from(next_valid_child.clone().clone());

@@ -229,13 +229,11 @@ impl<'a> Node<'a> {
         false
     }
 
-    pub fn dump(&'a self, settings: NodeDumpSettings) {
+    pub fn dump(&'a self, settings: DumpSettings) {
         self.internal_dump("", &settings);
     }
 
-    fn internal_dump(&'a self, indentation: &str, settings: &NodeDumpSettings) {
-        let indent = "  ";
-
+    fn internal_dump(&'a self, indentation: &str, settings: &DumpSettings) {
         macro_rules! color {
             ($color:literal) => {
                 if settings.color {
@@ -282,7 +280,7 @@ impl<'a> Node<'a> {
         println!("{indentation}{}", opening);
         for child in self.child_nodes().iter() {
             let mut indentation = indentation.to_string();
-            indentation.push_str(indent);
+            indentation.push_str(settings.indentation);
             child.internal_dump(&indentation, settings);
         }
         if let Some(closing_marker) = settings.closing_marker {
@@ -355,18 +353,21 @@ impl<'a> PartialEq for Node<'a> {
     }
 }
 
-pub struct NodeDumpSettings {
-    closing_marker: Option<&'static str>,
-    color: bool,
-    trim_text: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DumpSettings {
+    pub closing_marker: Option<&'static str>,
+    pub color: bool,
+    pub trim_text: bool,
+    pub indentation: &'static str,
 }
 
-impl Default for NodeDumpSettings {
+impl Default for DumpSettings {
     fn default() -> Self {
         Self {
             closing_marker: None,
             color: true,
             trim_text: true,
+            indentation: "  ",
         }
     }
 }

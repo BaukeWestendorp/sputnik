@@ -13,18 +13,22 @@ fn main() {
 
     let arena = Arena::new();
 
-    let html = std::fs::read_to_string(path).unwrap();
+    let html = std::fs::read_to_string(path.clone()).unwrap();
     let parser = Parser::new(arena, html.as_str());
 
+    eprintln!("Started parsing '{}'", path);
     let before = Instant::now();
     let document = parser.parse();
     let after = Instant::now();
     let time = after.duration_since(before);
+    eprintln!("Finished parsing document! Took {:?}!", time);
+    eprintln!();
 
+    eprintln!("---- DOM Tree ----");
     document.dump(Default::default());
+    eprintln!();
 
+    eprintln!("---- Render Tree ----");
     let render_tree = RenderObject::from(document.clone());
-    render_tree.dump();
-
-    eprintln!("Took {:?} to parse document!", time);
+    render_tree.dump(Default::default());
 }
