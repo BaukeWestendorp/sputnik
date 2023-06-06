@@ -31,4 +31,8 @@ fn main() {
     eprintln!("---- Render Tree ----");
     let render_tree = RenderObject::from(document.clone());
     render_tree.dump(Default::default());
+    eprintln!();
+
+    eprintln!("---- Layout Tree ----");
+    eprintln!("        TODO");
 }

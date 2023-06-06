@@ -1,11 +1,12 @@
 [package]
 name = "sputnik"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 tokenizer = { path = "../tokenizer"}
 render_tree = { path = "../render_tree"}
+layout = { path = "../layout"}
 parser = { path = "../parser"}
 dom = { path = "../dom"}
 typed-arena = "2.0.2"
