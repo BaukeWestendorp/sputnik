@@ -28,8 +28,10 @@ impl<'a> Parser<'a> {
                 // Reconstruct the active formatting elements, if any.
                 self.active_formatting_elements
                     .reconstruct_if_any(&self.open_elements);
+
                 // Insert the token's character.
                 self.insert_character(*data);
+
                 // Set the frameset-ok flag to "not ok".
                 self.frameset_ok.set(false);
             }
@@ -599,13 +601,13 @@ impl<'a> Parser<'a> {
                 // 2.1. Generate implied end tags, except for HTML elements with the same tag name as the token.
                 self.generate_implied_end_tags_except_for(Some(&token_tag_name));
                 // 2.2. If node is not the current node, then this is a parse error.
-                if *node == self.current_node() {
+                if *node != self.current_node() {
                     log_parser_error!();
                 }
                 // 2.3. Pop all the nodes from the current node up to node, including node,
-                while *node == self.current_node() {
-                    self.open_elements.pop();
-                }
+                self.open_elements
+                    .pop_elements_until_element_has_been_popped(self.current_node());
+
                 // then stop these steps.
                 break;
             } else {

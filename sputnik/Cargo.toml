@@ -7,4 +7,5 @@ edition = "2021"
 tokenizer = { path = "../tokenizer"}
 render_tree = { path = "../render_tree"}
 parser = { path = "../parser"}
+dom = { path = "../dom"}
 typed-arena = "2.0.2"

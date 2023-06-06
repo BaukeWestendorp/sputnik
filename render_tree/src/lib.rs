@@ -1,4 +1,4 @@
-use dom::node::{DumpSettings, Node, NodeType};
+use dom::node::{Node, NodeType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderObject<'a> {
@@ -143,6 +143,25 @@ impl<'a> RenderObject<'a> {
     fn append_child_if_possible(&mut self, child: RenderObject<'a>) {
         if let RenderObject::Element { children, .. } = self {
             children.push(child)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DumpSettings {
+    pub closing_marker: Option<&'static str>,
+    pub color: bool,
+    pub trim_text: bool,
+    pub indentation: &'static str,
+}
+
+impl Default for DumpSettings {
+    fn default() -> Self {
+        Self {
+            closing_marker: None,
+            color: true,
+            trim_text: true,
+            indentation: "  ",
         }
     }
 }

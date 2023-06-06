@@ -34,6 +34,7 @@ dependencies = [
 name = "sputnik"
 version = "0.1.0"
 dependencies = [
+ "dom",
  "parser",
  "render_tree",
  "tokenizer",

@@ -172,17 +172,18 @@ impl<'a> Parser<'a> {
         if let Some(last_child) = adjusted_insertion_location.parent.last_child() {
             if let NodeType::Text { data } = &last_child.node_type {
                 data.borrow_mut().push(character);
+                return;
             }
-        } else {
-            // Otherwise, create a new Text node whose data is data and whose node document is the same as that of the element in which the adjusted insertion location finds itself, and insert the newly created node at the adjusted insertion location.
-            let text_node = self.allocate_node(Node::new(
-                Some(adjusted_insertion_location.parent.node_document()),
-                NodeType::Text {
-                    data: RefCell::new(character.to_string()),
-                },
-            ));
-            adjusted_insertion_location.insert(text_node);
         }
+
+        // Otherwise, create a new Text node whose data is data and whose node document is the same as that of the element in which the adjusted insertion location finds itself, and insert the newly created node at the adjusted insertion location.
+        let text_node = self.allocate_node(Node::new(
+            Some(adjusted_insertion_location.parent.node_document()),
+            NodeType::Text {
+                data: RefCell::new(character.to_string()),
+            },
+        ));
+        adjusted_insertion_location.insert(text_node);
     }
 
     // https://html.spec.whatwg.org/#insert-a-comment
