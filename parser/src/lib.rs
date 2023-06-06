@@ -1,17 +1,14 @@
 use std::cell::{Cell, RefCell};
 
-use crate::namespace::Namespace;
-use dom::{Node, NodeType};
+use dom::element::Element;
+use dom::node::{Node, NodeLink, NodeRef, NodeType};
+use html::namespace::Namespace;
 use tokenizer::{Token, Tokenizer};
 use tree_construction::list_of_active_formatting_elements::ListOfActiveFormattingElements;
 use tree_construction::stack_of_open_elements::StackOfOpenElements;
 use typed_arena::Arena;
-use types::{InsertionMode, NodeLink, NodeRef};
 
-pub mod dom;
-pub mod namespace;
 pub(crate) mod tree_construction;
-pub mod types;
 
 const fn is_parser_whitespace(string: char) -> bool {
     if let '\t' | '\u{000a}' | '\u{000c}' | '\u{000d}' | '\u{0020}' = string {
@@ -28,8 +25,34 @@ macro_rules! log_current_process {
     };
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InsertionMode {
+    Initial,
+    BeforeHtml,
+    BeforeHead,
+    InHead,
+    InHeadNoscript,
+    AfterHead,
+    InBody,
+    Text,
+    InTable,
+    InTableText,
+    InCaption,
+    InColumnGroup,
+    InTableBody,
+    InRow,
+    InCell,
+    InSelect,
+    InSelectInTable,
+    InTemplate,
+    AfterBody,
+    InFrameset,
+    AfterFrameset,
+    AfterAfterBody,
+    AfterAfterFrameset,
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
-#[allow(unused)]
 enum GenericParsingAlgorithm {
     RawText,
     RcData,
@@ -341,6 +364,30 @@ impl<'a> Parser<'a> {
         }
 
         self.document.clone()
+    }
+}
+
+// DOM Implementations
+impl<'a> Parser<'a> {
+    // https://dom.spec.whatwg.org/#concept-create-element
+    pub(crate) fn create_element(
+        &'a self,
+        document: NodeRef<'a>,
+        local_name: &String,
+        namespace: Namespace,
+        _prefix: Option<&String>,
+        _is: Option<&String>,
+        _synchronous_custom_elements: bool,
+    ) -> NodeRef<'a> {
+        // FIXME: This does not implement any spec functionality yet!
+        self.allocate_node(Node::new(
+            Some(document),
+            NodeType::Element(Element {
+                tag_name: local_name.to_owned(),
+                namespace: Some(namespace),
+                attributes: RefCell::new(vec![]),
+            }),
+        ))
     }
 }
 

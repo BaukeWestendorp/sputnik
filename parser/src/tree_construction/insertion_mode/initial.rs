@@ -1,8 +1,6 @@
+use crate::{is_parser_whitespace, log_parser_error, InsertionMode, Parser};
+use dom::node::{Node, NodeType};
 use tokenizer::Token;
-
-use crate::dom::{Node, NodeType};
-use crate::types::InsertionMode;
-use crate::{is_parser_whitespace, log_parser_error, Parser};
 
 impl<'a> Parser<'a> {
     pub(crate) fn handle_initial(&'a self, token: &Token) {

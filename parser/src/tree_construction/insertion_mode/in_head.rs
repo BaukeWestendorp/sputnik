@@ -1,7 +1,8 @@
 use tokenizer::Token;
 
-use crate::types::InsertionMode;
-use crate::{is_parser_whitespace, log_parser_error, GenericParsingAlgorithm, Parser};
+use crate::{
+    is_parser_whitespace, log_parser_error, GenericParsingAlgorithm, InsertionMode, Parser,
+};
 
 impl<'a> Parser<'a> {
     pub(crate) fn handle_in_head(&'a self, token: &Token) {

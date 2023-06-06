@@ -1,12 +1,10 @@
-use crate::types::NodeRef;
-
-use super::node::Node;
+use crate::node::{Node, NodeRef};
 
 // 4.2.3. Mutation algorithms
 // https://dom.spec.whatwg.org/#mutation-algorithms
 impl<'a> Node<'a> {
     // https://dom.spec.whatwg.org/#concept-node-ensure-pre-insertion-validity
-    pub(crate) fn ensure_pre_insertion_validity(
+    pub fn ensure_pre_insertion_validity(
         _node: NodeRef<'a>,
         _parent: NodeRef<'a>,
         _child: Option<NodeRef<'a>>,
@@ -16,7 +14,7 @@ impl<'a> Node<'a> {
     }
 
     // https://dom.spec.whatwg.org/#concept-node-pre-insert
-    pub(crate) fn pre_insert(
+    pub fn pre_insert(
         node: NodeRef<'a>,
         parent: NodeRef<'a>,
         child: Option<NodeRef<'a>>,
@@ -40,7 +38,7 @@ impl<'a> Node<'a> {
         node
     }
 
-    pub(crate) fn insert(
+    pub fn insert(
         node: NodeRef<'a>,
         parent: NodeRef<'a>,
         child: Option<NodeRef<'a>>,
@@ -124,12 +122,12 @@ impl<'a> Node<'a> {
     }
 
     // https://dom.spec.whatwg.org/#concept-node-append
-    pub(crate) fn append(node: NodeRef<'a>, parent: NodeRef<'a>, _suppress_observers: bool) {
+    pub fn append(node: NodeRef<'a>, parent: NodeRef<'a>, _suppress_observers: bool) {
         Node::pre_insert(node, parent, None);
     }
 
     // https://dom.spec.whatwg.org/#concept-node-remove
-    pub(crate) fn remove(_node: NodeRef<'a>, _suppress_observers: bool) {
+    pub fn remove(_node: NodeRef<'a>, _suppress_observers: bool) {
         todo!()
     }
 }

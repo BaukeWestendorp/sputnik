@@ -1,18 +1,15 @@
 use std::cell::{Cell, Ref, RefCell};
 
-use tokenizer::Attribute;
+use html::namespace::Namespace;
 
-use crate::namespace::Namespace;
-use crate::types::{NodeLink, NodeRef};
+use crate::element::Element;
+
+pub type NodeLink<'a> = Cell<Option<NodeRef<'a>>>;
+pub type NodeRef<'a> = &'a Node<'a>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeType {
-    Element {
-        // FIXME: This does not really follow the spec.
-        tag_name: String,
-        namespace: Option<Namespace>,
-        attributes: RefCell<Vec<Attribute>>,
-    },
+    Element(Element),
     Attr,
     Text {
         data: RefCell<String>,
@@ -47,11 +44,11 @@ pub struct Node<'a> {
 // https://dom.spec.whatwg.org/#interface-node
 impl<'a> Node<'a> {
     // https://dom.spec.whatwg.org/#dom-node-nodename
-    pub fn node_name(&'a self) -> String {
+    pub fn node_name(&self) -> String {
         match &self.node_type {
-            NodeType::Element { tag_name, .. } => {
+            NodeType::Element(element) => {
                 // FIXME: Implement propperly
-                tag_name.to_ascii_uppercase()
+                element.tag_name.to_ascii_uppercase()
             }
             NodeType::Attr => todo!(),
             NodeType::Text { .. } => "#text".to_string(),
@@ -65,12 +62,12 @@ impl<'a> Node<'a> {
     }
 
     // https://dom.spec.whatwg.org/#dom-node-parentnode
-    pub fn parent_node(&'a self) -> Option<NodeRef<'a>> {
+    pub fn parent_node(&self) -> Option<NodeRef<'a>> {
         self.parent.get()
     }
 
     // https://dom.spec.whatwg.org/#dom-node-parentelement
-    pub fn parent_element(&'a self) -> Option<NodeRef<'a>> {
+    pub fn parent_element(&self) -> Option<NodeRef<'a>> {
         match self.parent.get() {
             Some(parent) if parent.is_element() => Some(parent),
             _ => None,
@@ -79,27 +76,27 @@ impl<'a> Node<'a> {
 
     // https://dom.spec.whatwg.org/#dom-node-childnodes
     // FIXME: Should return a NodeList.
-    pub fn child_nodes(&'a self) -> Ref<Vec<NodeRef<'a>>> {
+    pub fn child_nodes(&self) -> Ref<Vec<NodeRef<'a>>> {
         self.children.borrow()
     }
 
     // https://dom.spec.whatwg.org/#dom-node-firstchild
-    pub fn first_child(&'a self) -> Option<NodeRef<'a>> {
+    pub fn first_child(&self) -> Option<NodeRef<'a>> {
         self.first_child.get()
     }
 
     // https://dom.spec.whatwg.org/#dom-node-lastchild
-    pub fn last_child(&'a self) -> Option<NodeRef<'a>> {
+    pub fn last_child(&self) -> Option<NodeRef<'a>> {
         self.last_child.get()
     }
 
     // https://dom.spec.whatwg.org/#dom-node-previoussibling
-    pub fn previous_sibling(&'a self) -> Option<NodeRef<'a>> {
+    pub fn previous_sibling(&self) -> Option<NodeRef<'a>> {
         self.previous_sibling.get()
     }
 
     // https://dom.spec.whatwg.org/#dom-node-nextsibling
-    pub fn next_sibling(&'a self) -> Option<NodeRef<'a>> {
+    pub fn next_sibling(&self) -> Option<NodeRef<'a>> {
         self.next_sibling.get()
     }
 
@@ -120,7 +117,7 @@ impl<'a> Node<'a> {
     }
 
     // https://dom.spec.whatwg.org/#concept-tree-index
-    pub fn index(&'a self) -> usize {
+    pub fn index(&self) -> usize {
         let mut index = 0;
         let mut current = self.previous_sibling();
         while let Some(node) = current {
@@ -165,7 +162,7 @@ impl<'a> Node<'a> {
     }
 
     // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-descendant
-    pub fn shadow_including_inclusive_descendants(&'a self) -> Vec<NodeRef<'a>> {
+    pub fn shadow_including_inclusive_descendants(&self) -> Vec<NodeRef<'a>> {
         // FIXME: Implement properly.
         self.child_nodes().to_owned()
     }
@@ -206,28 +203,28 @@ impl<'a> Node<'a> {
 
     pub fn element_tag_name(&self) -> Option<String> {
         match &self.node_type {
-            NodeType::Element { tag_name, .. } => Some(tag_name.to_string()),
+            NodeType::Element(element) => Some(element.tag_name.to_string()),
             _ => None,
         }
     }
 
     pub fn is_element_with_one_of_tags(&self, tags: &[&str]) -> bool {
-        if let NodeType::Element { tag_name, .. } = &self.node_type {
-            return tags.contains(&tag_name.as_str());
+        if let NodeType::Element(element) = &self.node_type {
+            return tags.contains(&element.tag_name.as_str());
         }
         false
     }
 
     pub fn is_element_with_tag(&self, tag: &str) -> bool {
-        if let NodeType::Element { tag_name, .. } = &self.node_type {
-            return tag_name == tag;
+        if let NodeType::Element(element) = &self.node_type {
+            return element.tag_name == tag;
         }
         false
     }
 
     pub fn is_element_with_namespace(&self, namespace: Namespace) -> bool {
-        if let NodeType::Element { namespace: ns, .. } = &self.node_type {
-            return Some(namespace) == *ns;
+        if let NodeType::Element(element) = &self.node_type {
+            return Some(namespace) == element.namespace;
         }
         false
     }
@@ -266,13 +263,13 @@ impl<'a> Node<'a> {
                     let data = data.borrow().clone();
                     match settings.trim_text {
                         true => data.trim().to_string(),
-                        false => data.clone(),
+                        false => data,
                     }
                 })
             }
-            NodeType::Element { attributes, .. } => {
+            NodeType::Element(element) => {
                 let mut attr_string = String::new();
-                for attr in attributes.borrow().iter() {
+                for attr in element.attributes.borrow().iter() {
                     attr_string.push_str(&format!(
                         "{cyan}{}{gray}{blue}={gray}\"{green}{}{gray}\" ",
                         attr.name, attr.value
@@ -317,21 +314,11 @@ impl<'a> PartialEq for Node<'a> {
                         system_identifier: sys_id_b,
                     },
                 ) => name_a == name_b && pub_id_a == pub_id_b && sys_id_a == sys_id_b,
-                (
-                    NodeType::Element {
-                        tag_name: tag_name_a,
-                        namespace: namespace_a,
-                        attributes: attributes_a,
-                    },
-                    NodeType::Element {
-                        tag_name: tag_name_b,
-                        namespace: namespace_b,
-                        attributes: attributes_b,
-                    },
-                ) => {
-                    tag_name_a == tag_name_b
-                        && namespace_a == namespace_b
-                        && attributes_a.borrow().len() == attributes_b.borrow().len()
+                (NodeType::Element(element_a), NodeType::Element(element_b)) => {
+                    element_a.tag_name == element_b.tag_name
+                        && element_a.namespace == element_b.namespace
+                        && element_a.attributes.borrow().len()
+                            == element_b.attributes.borrow().len()
                 }
                 (NodeType::Attr, NodeType::Attr) => todo!(),
                 (NodeType::ProcessingInstruction, NodeType::ProcessingInstruction) => todo!(),
@@ -342,16 +329,17 @@ impl<'a> PartialEq for Node<'a> {
                 _ => true,
             }
             && match &self.node_type {
-                NodeType::Element { attributes, .. } => {
-                    if let NodeType::Element {
-                        attributes: other_attributes,
-                        ..
-                    } = &other.node_type
-                    {
-                        attributes.borrow().iter().enumerate().all(|(i, attr)| {
-                            let other_attributes = other_attributes.borrow();
-                            Some(attr) == other_attributes.get(i)
-                        })
+                NodeType::Element(element) => {
+                    if let NodeType::Element(other_element) = &other.node_type {
+                        element
+                            .attributes
+                            .borrow()
+                            .iter()
+                            .enumerate()
+                            .all(|(i, attr)| {
+                                let other_attributes = other_element.attributes.borrow();
+                                Some(attr) == other_attributes.get(i)
+                            })
                     } else {
                         false
                     }

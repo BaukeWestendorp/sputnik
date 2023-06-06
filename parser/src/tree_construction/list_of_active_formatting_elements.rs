@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use crate::types::NodeRef;
+use dom::node::NodeRef;
 
 use super::stack_of_open_elements::StackOfOpenElements;
 

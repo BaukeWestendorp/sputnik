@@ -3,15 +3,31 @@
 version = 3
 
 [[package]]
-name = "layout"
+name = "dom"
+version = "0.1.0"
+dependencies = [
+ "html",
+]
+
+[[package]]
+name = "html"
 version = "0.1.0"
 
 [[package]]
 name = "parser"
 version = "0.1.0"
 dependencies = [
+ "dom",
+ "html",
  "tokenizer",
  "typed-arena",
+]
+
+[[package]]
+name = "render_tree"
+version = "0.1.0"
+dependencies = [
+ "dom",
 ]
 
 [[package]]
@@ -19,6 +35,7 @@ name = "sputnik"
 version = "0.1.0"
 dependencies = [
  "parser",
+ "render_tree",
  "tokenizer",
  "typed-arena",
 ]

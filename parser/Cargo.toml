@@ -5,4 +5,6 @@ edition = "2021"
 
 [dependencies]
 tokenizer = { path = "../tokenizer" }
+dom = { path = "../dom" }
+html = { path = "../html" }
 typed-arena = "2.0.2"

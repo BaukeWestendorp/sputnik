@@ -1,9 +1,8 @@
+use html::namespace::Namespace;
 use tokenizer::Token;
 
-use crate::namespace::Namespace;
 use crate::tree_construction::{list_of_active_formatting_elements, stack_of_open_elements};
-use crate::types::InsertionMode;
-use crate::{is_parser_whitespace, log_parser_error, Parser};
+use crate::{is_parser_whitespace, log_parser_error, InsertionMode, Parser};
 
 impl<'a> Parser<'a> {
     pub(crate) fn handle_in_body(&'a self, token: &Token) {

@@ -1,4 +1,5 @@
 use parser::Parser;
+use render_tree::RenderObject;
 use std::time::Instant;
 use typed_arena::Arena;
 
@@ -21,5 +22,9 @@ fn main() {
     let time = after.duration_since(before);
 
     document.dump(Default::default());
+
+    let render_tree = RenderObject::from(document.clone());
+    render_tree.dump();
+
     eprintln!("Took {:?} to parse document!", time);
 }

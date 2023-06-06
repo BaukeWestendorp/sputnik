@@ -1,5 +1,4 @@
-use crate::types::InsertionMode;
-use crate::Parser;
+use crate::{InsertionMode, Parser};
 
 pub(crate) mod after_after_body;
 pub(crate) mod after_body;

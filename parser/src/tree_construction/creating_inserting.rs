@@ -1,10 +1,10 @@
 use std::cell::{Cell, RefCell};
 
+use dom::attr::Attr;
+use dom::node::{Node, NodeRef, NodeType};
+use html::namespace::Namespace;
 use tokenizer::Token;
 
-use crate::dom::{Node, NodeType};
-use crate::namespace::Namespace;
-use crate::types::NodeRef;
 use crate::Parser;
 
 enum InsertionLocation {
@@ -87,9 +87,12 @@ impl<'a> Parser<'a> {
         let element = self.create_element(document, local_name, namespace, None, None, false);
 
         // 10. Append each attribute in the given token to element.
-        if let NodeType::Element { attributes, .. } = &element.node_type {
+        if let NodeType::Element(element) = &element.node_type {
             for attr in token_attributes {
-                attributes.borrow_mut().push(attr.clone());
+                element.attributes.borrow_mut().push(Attr {
+                    name: attr.name.clone(),
+                    value: attr.value.clone(),
+                });
             }
         }
 

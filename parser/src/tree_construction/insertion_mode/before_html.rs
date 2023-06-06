@@ -1,9 +1,8 @@
 use tokenizer::Token;
 
-use crate::dom::Node;
-use crate::namespace::Namespace;
-use crate::types::InsertionMode;
-use crate::{is_parser_whitespace, log_parser_error, Parser};
+use crate::{is_parser_whitespace, log_parser_error, InsertionMode, Parser};
+use dom::node::Node;
+use html::namespace::Namespace;
 
 impl<'a> Parser<'a> {
     pub(crate) fn handle_before_html(&'a self, token: &Token) {

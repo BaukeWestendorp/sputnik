@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use crate::types::NodeRef;
+use dom::node::NodeRef;
 
 pub struct StackOfOpenElements<'a> {
     pub(crate) elements: RefCell<Vec<NodeRef<'a>>>,
