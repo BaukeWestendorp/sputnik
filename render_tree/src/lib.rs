@@ -31,21 +31,22 @@ impl RenderObject<'_> {
         let reset = color!("\x1b[0m");
         let gray = color!("\x1b[90m");
 
-        let opening = match self {
-            RenderObject::Text(data) => {
-                format!("{gray}#text \"{white}{}{gray}\"{reset}", {
-                    match settings.trim_text {
-                        true => data.trim().to_string(),
-                        false => data.clone(),
-                    }
-                })
+        let opening_marker = match self {
+            RenderObject::Text(data) => Some(format!("{gray}#text \"{white}{}{gray}\"{reset}", {
+                match settings.trim_text {
+                    true => data.trim().to_string(),
+                    false => data.clone(),
+                }
+            })),
+            RenderObject::Element { element, .. } if element.is_element() => {
+                Some(format!("{yellow}{}{reset}", element.node_name()))
             }
-            RenderObject::Element { element, .. } => {
-                format!("{yellow}{}{reset}", element.node_name())
-            }
+            _ => None,
         };
 
-        println!("{indentation}{}", opening);
+        if let Some(opening_marker) = opening_marker {
+            println!("{indentation}{}", opening_marker);
+        }
         if let RenderObject::Element { children, .. } = self {
             for child in children.iter() {
                 let mut indentation = indentation.to_string();
@@ -60,43 +61,45 @@ impl RenderObject<'_> {
     }
 }
 
-impl<'a> From<Node<'a>> for RenderObject<'a> {
-    fn from(node: Node<'a>) -> Self {
-        if let NodeType::Text { data } = node.node_type {
-            return RenderObject::Text(data.borrow().clone());
+fn node_is_valid<'a>(node: &Node<'a>) -> bool {
+    match &node.node_type {
+        NodeType::Element(element) => {
+            element.tag_name != "head"
+                && element.tag_name != "script"
+                && element.tag_name != "meta"
+                && element.tag_name != "link"
+                && element.tag_name != "style"
+        }
+        NodeType::Text { .. } => true,
+        _ => false,
+    }
+}
+
+fn next_valid_render_tree_descendant<'a>(node: &Node<'a>) -> Option<&'a Node<'a>> {
+    let mut valid_child = None;
+    for child in node.child_nodes().iter() {
+        if node_is_valid(child) {
+            valid_child = Some(child.clone());
+            break;
         }
 
+        if let Some(next_valid_child) = next_valid_render_tree_descendant(child) {
+            valid_child = Some(next_valid_child);
+            break;
+        }
+    }
+    valid_child
+}
+
+impl<'a> From<Node<'a>> for RenderObject<'a> {
+    fn from(node: Node<'a>) -> Self {
         let mut render_object = RenderObject::Element {
             element: node.clone(),
             children: vec![],
         };
 
-        let node_is_valid = |node: &Node<'a>| match &node.node_type {
-            NodeType::Element(element) => {
-                element.tag_name != "html"
-                    && element.tag_name != "head"
-                    && element.tag_name != "script"
-                    && element.tag_name != "meta"
-                    && element.tag_name != "link"
-                    && element.tag_name != "style"
-            }
-            NodeType::Text { .. } => true,
-            _ => false,
-        };
-
-        let next_valid_child = |node: &Node<'a>| {
-            let mut valid_child = None;
-            for child in node.child_nodes().iter() {
-                if node_is_valid(&child) {
-                    valid_child = Some(<&Node<'_>>::clone(child).clone());
-                    break;
-                }
-            }
-            valid_child
-        };
-
         if node_is_valid(&node) {
-            match node.node_type {
+            match &node.node_type {
                 NodeType::Element { .. } => {
                     for child in node.child_nodes().iter() {
                         if node_is_valid(child) {
@@ -113,24 +116,13 @@ impl<'a> From<Node<'a>> for RenderObject<'a> {
                 _ => {}
             }
         } else {
-            while let Some(next_sibling) = node.next_sibling() {
-                if let Some(next_valid_child) = next_valid_child(next_sibling) {
-                    render_object = RenderObject::from(next_valid_child.clone().clone());
-                    break;
-                }
-                if node_is_valid(next_sibling) {
-                    render_object = RenderObject::from(next_sibling.clone());
-                    break;
-                }
-            }
             for child in node.child_nodes().iter() {
-                if let Some(next_valid_child) = next_valid_child(child) {
-                    render_object = RenderObject::from(next_valid_child.clone().clone());
-                    break;
-                }
                 if node_is_valid(child) {
-                    render_object = RenderObject::from(<&Node<'_>>::clone(child).clone());
-                    break;
+                    render_object = RenderObject::from(child.clone().clone());
+                } else {
+                    if let Some(next_valid_descendant) = next_valid_render_tree_descendant(child) {
+                        todo!()
+                    }
                 }
             }
         }
