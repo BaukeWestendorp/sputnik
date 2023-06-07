@@ -33,15 +33,6 @@ version = "0.1.0"
 dependencies = [
  "arena_tree",
  "dom",
- "render_tree",
-]
-
-[[package]]
-name = "render_tree"
-version = "0.1.0"
-dependencies = [
- "arena_tree",
- "dom",
 ]
 
 [[package]]
@@ -51,7 +42,6 @@ dependencies = [
  "dom",
  "html_parser",
  "layout",
- "render_tree",
  "tokenizer",
  "typed-arena",
 ]

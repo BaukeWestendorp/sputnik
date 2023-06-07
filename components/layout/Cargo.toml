@@ -6,4 +6,3 @@ edition.workspace = true
 [dependencies]
 arena_tree = { path = "../arena_tree" }
 dom = { path = "../dom" }
-render_tree = { path = "../render_tree" }

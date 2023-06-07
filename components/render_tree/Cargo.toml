@@ -1,8 +1,0 @@
-[package]
-name = "render_tree"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-dom = { path = "../dom" }
-arena_tree = { path = "../arena_tree" }
