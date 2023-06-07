@@ -1,5 +1,5 @@
+use layout::tree::LayoutTree;
 use parser::Parser;
-use render_tree::RenderTree;
 use std::time::Instant;
 use typed_arena::Arena;
 
@@ -28,11 +28,7 @@ fn main() {
     document.dump(Default::default());
     eprintln!();
 
-    eprintln!("---- Render Tree ----");
-    let render_tree = RenderTree::from(&document);
-    render_tree.dump(Default::default());
-    eprintln!();
-
     eprintln!("---- Layout Tree ----");
-    eprintln!("        TODO");
+    let layout_tree = LayoutTree::from(&document);
+    layout_tree.dump(Default::default());
 }

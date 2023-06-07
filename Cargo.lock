@@ -20,6 +20,11 @@ version = "0.1.0"
 [[package]]
 name = "layout"
 version = "0.1.0"
+dependencies = [
+ "arena_tree",
+ "dom",
+ "render_tree",
+]
 
 [[package]]
 name = "parser"

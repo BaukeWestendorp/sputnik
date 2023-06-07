@@ -6,7 +6,7 @@ use node::TreeNode;
 mod dump;
 mod node;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct ArenaTree<T>
 where
     T: PartialEq,
