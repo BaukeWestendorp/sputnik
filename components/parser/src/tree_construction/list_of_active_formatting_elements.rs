@@ -5,6 +5,7 @@ use dom::node::NodeRef;
 use super::stack_of_open_elements::StackOfOpenElements;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
+#[allow(unused)]
 pub enum ActiveFormattingElement<'a> {
     Marker,
     Element(NodeRef<'a>),
