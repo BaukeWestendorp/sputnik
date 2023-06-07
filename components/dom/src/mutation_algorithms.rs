@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use crate::node::{Node, NodeRef};
 
 // 4.2.3. Mutation algorithms
@@ -8,7 +10,7 @@ impl<'a> Node<'a> {
         _node: NodeRef<'a>,
         _parent: NodeRef<'a>,
         _child: Option<NodeRef<'a>>,
-    ) -> Result<(), ()> {
+    ) -> Result<(), Box<dyn Error>> {
         eprintln!("FIXME: Skipped pre-insertion validity check!");
         Ok(())
     }
