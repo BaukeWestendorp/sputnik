@@ -1,4 +1,4 @@
-use crate::RenderObject;
+use crate::{RenderNode, RenderTree};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DumpSettings {
@@ -19,12 +19,8 @@ impl Default for DumpSettings {
     }
 }
 
-impl RenderObject<'_> {
+impl RenderTree<'_> {
     pub fn dump(&self, settings: DumpSettings) {
-        self.internal_dump("", settings);
-    }
-
-    fn internal_dump(&self, indentation: &str, settings: DumpSettings) {
         macro_rules! color {
             ($color:literal) => {
                 if settings.color {
@@ -40,32 +36,23 @@ impl RenderObject<'_> {
         let reset = color!("\x1b[0m");
         let gray = color!("\x1b[90m");
 
-        let opening_marker = match self {
-            RenderObject::Text(data) => Some(format!("{gray}#text \"{white}{}{gray}\"{reset}", {
-                match settings.trim_text {
-                    true => data.trim().to_string(),
-                    false => data.clone(),
+        self.tree.dump(
+            "  ",
+            |node| match node.value() {
+                RenderNode::Text(data) => {
+                    Some(format!("{gray}#text \"{white}{}{gray}\"{reset}", {
+                        match settings.trim_text {
+                            true => data.trim().to_string(),
+                            false => data.clone(),
+                        }
+                    }))
                 }
-            })),
-            RenderObject::Element { element, .. } if element.is_element() => {
-                Some(format!("{yellow}{}{reset}", element.node_name()))
-            }
-            _ => None,
-        };
-
-        if let Some(opening_marker) = opening_marker {
-            println!("{indentation}{}", opening_marker);
-        }
-        if let RenderObject::Element { children, .. } = self {
-            for child in children.iter() {
-                let mut indentation = indentation.to_string();
-                indentation.push_str("  ");
-                child.internal_dump(&indentation, settings);
-            }
-        }
-
-        if let Some(closing_marker) = settings.closing_marker {
-            println!("{indentation}{closing_marker}");
-        }
+                RenderNode::Element(element) if element.is_element() => {
+                    Some(format!("{yellow}{}{reset}", element.node_name()))
+                }
+                _ => None,
+            },
+            |_| settings.closing_marker.map(|marker| marker.to_string()),
+        );
     }
 }

@@ -1,36 +1,27 @@
 pub mod dump;
 
-use dom::node::{Node, NodeType};
+use arena_tree::ArenaTree;
+use dom::node::{Node, NodeRef, NodeType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RenderObject<'a> {
+pub enum RenderNode<'a> {
     Text(String),
-    Element {
-        element: Node<'a>,
-        children: Vec<RenderObject<'a>>,
-        // FIXME: Style
-    },
+    Element(NodeRef<'a>),
 }
 
-impl<'a> RenderObject<'a> {
-    pub fn element(&self) -> Option<&Node<'a>> {
-        match self {
-            RenderObject::Text(_) => None,
-            RenderObject::Element { element, .. } => Some(element),
-        }
-    }
+pub struct RenderTree<'a> {
+    pub tree: ArenaTree<RenderNode<'a>>,
+}
 
-    pub fn children(&self) -> Vec<RenderObject<'a>> {
-        match self {
-            RenderObject::Text(_) => vec![],
-            RenderObject::Element { children, .. } => children.clone(),
-        }
-    }
+impl<'a> RenderTree<'a> {
+    pub fn from(node: NodeRef<'a>) -> Self {
+        let mut render_tree = Self {
+            tree: ArenaTree::new(),
+        };
 
-    pub(crate) fn append_child_if_possible(&mut self, child: RenderObject<'a>) {
-        if let RenderObject::Element { children, .. } = self {
-            children.push(child)
-        }
+        RenderNode::from(&mut render_tree, node);
+
+        render_tree
     }
 }
 
@@ -38,6 +29,7 @@ pub(crate) fn node_is_valid(node: &Node<'_>) -> bool {
     match &node.node_type {
         NodeType::Element(element) => {
             element.tag_name != "head"
+                && element.tag_name != "html"
                 && element.tag_name != "script"
                 && element.tag_name != "meta"
                 && element.tag_name != "link"
@@ -48,28 +40,22 @@ pub(crate) fn node_is_valid(node: &Node<'_>) -> bool {
     }
 }
 
-impl<'a> From<Node<'a>> for RenderObject<'a> {
-    fn from(node: Node<'a>) -> Self {
-        let mut render_object = RenderObject::Element {
-            element: node.clone(),
-            children: vec![],
-        };
-
-        // eprintln!("Node {:?}", node.node_type);
-
-        if node_is_valid(&node) {
+impl<'a> RenderNode<'a> {
+    pub fn from(render_tree: &mut RenderTree<'a>, node: NodeRef<'a>) -> usize {
+        let mut tree_node = render_tree.tree.node(RenderNode::Element(node));
+        if node_is_valid(node) {
             for child in node.child_nodes().iter() {
                 if node_is_valid(child) {
                     match &child.node_type {
                         NodeType::Element(_) => {
-                            render_object.append_child_if_possible(RenderObject::from(
-                                <&Node<'_>>::clone(child).clone(),
-                            ));
+                            let new_node = RenderNode::from(render_tree, child);
+                            render_tree.tree.insert(tree_node, new_node);
                         }
                         NodeType::Text { data } => {
-                            render_object.append_child_if_possible(RenderObject::Text(
-                                data.borrow().clone(),
-                            ));
+                            let new_node = render_tree
+                                .tree
+                                .node(RenderNode::Text(data.borrow().clone()));
+                            render_tree.tree.insert(tree_node, new_node);
                         }
                         _ => {}
                     }
@@ -78,11 +64,11 @@ impl<'a> From<Node<'a>> for RenderObject<'a> {
         } else {
             for child in node.child_nodes().iter() {
                 if node_is_valid(child) {
-                    render_object = RenderObject::from(<&Node<'_>>::clone(child).clone());
+                    tree_node = RenderNode::from(render_tree, child);
                 }
             }
         }
 
-        render_object.clone()
+        tree_node
     }
 }

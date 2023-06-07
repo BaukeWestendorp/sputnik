@@ -3,6 +3,10 @@
 version = 3
 
 [[package]]
+name = "arena_tree"
+version = "0.1.0"
+
+[[package]]
 name = "dom"
 version = "0.1.0"
 dependencies = [
@@ -31,6 +35,7 @@ dependencies = [
 name = "render_tree"
 version = "0.1.0"
 dependencies = [
+ "arena_tree",
  "dom",
 ]
 

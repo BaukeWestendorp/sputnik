@@ -1,5 +1,5 @@
 use parser::Parser;
-use render_tree::RenderObject;
+use render_tree::RenderTree;
 use std::time::Instant;
 use typed_arena::Arena;
 
@@ -29,7 +29,7 @@ fn main() {
     eprintln!();
 
     eprintln!("---- Render Tree ----");
-    let render_tree = RenderObject::from(document.clone());
+    let render_tree = RenderTree::from(&document);
     render_tree.dump(Default::default());
     eprintln!();
 

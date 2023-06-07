@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["sputnik", "tokenizer", "parser", "dom", "render_tree", "html", "layout"]
+members = ["sputnik", "tokenizer", "parser", "dom", "render_tree", "html", "layout", "arena_tree"]
