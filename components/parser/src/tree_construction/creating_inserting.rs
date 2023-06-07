@@ -50,6 +50,12 @@ impl<'a> Parser<'a> {
         };
 
         // FIXME: 3. If the adjusted insertion location is inside a template element, let it instead be inside the template element's template contents, after its last child (if any).
+        if adjusted_insertion_location
+            .parent
+            .is_element_with_tag("template")
+        {
+            // FIXME: Implement
+        }
         // 4. Return the adjusted insertion location.
         adjusted_insertion_location
     }
