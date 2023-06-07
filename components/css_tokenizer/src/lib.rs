@@ -32,6 +32,15 @@ macro_rules! definition {
     };
 }
 
+macro_rules! log_current_token {
+    ($token:expr) => {
+        if std::env::var("CSS_TOKENIZER_LOGGING").is_ok() {
+            eprintln!("\x1b[34m[CssTokenizer] {:?}\x1b[0m", $token);
+        }
+    };
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tokenizer<'a> {
     input: &'a str,
     position: usize,
@@ -47,6 +56,9 @@ impl<'a> Tokenizer<'a> {
 
         loop {
             let token = self.consume_a_token();
+
+            log_current_token!(token);
+
             match token {
                 Ok(token) => match token {
                     Token::EndOfFile => {
@@ -109,7 +121,7 @@ impl<'a> Tokenizer<'a> {
         code_point
     }
 
-    fn consume_as_much_whitespace_as_possible(&mut self) -> () {
+    fn consume_as_much_whitespace_as_possible(&mut self) {
         while self
             .next_code_point()
             .is_some_and(|code_point| code_point.is_whitespace())
@@ -157,4 +169,5 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CssParsingError {}
