@@ -16,7 +16,7 @@ name = "arena_tree"
 version = "0.1.0"
 
 [[package]]
-name = "css_parser"
+name = "css_tokenizer"
 version = "0.1.0"
 dependencies = [
  "regex",
@@ -78,7 +78,7 @@ checksum = "436b050e76ed2903236f032a59761c1eb99e1b0aead2c257922771dab1fc8c78"
 name = "sputnik"
 version = "0.1.0"
 dependencies = [
- "css_parser",
+ "css_tokenizer",
  "dom",
  "html_parser",
  "layout",
