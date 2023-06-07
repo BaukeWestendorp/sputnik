@@ -29,7 +29,6 @@ pub(crate) fn node_is_valid(node: &Node<'_>) -> bool {
     match &node.node_type {
         NodeType::Element(element) => {
             element.tag_name != "head"
-                && element.tag_name != "html"
                 && element.tag_name != "script"
                 && element.tag_name != "meta"
                 && element.tag_name != "link"
