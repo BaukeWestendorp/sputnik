@@ -1,5 +1,5 @@
+use html_parser::Parser;
 use layout::tree::LayoutTree;
-use parser::Parser;
 use std::time::Instant;
 use typed_arena::Arena;
 

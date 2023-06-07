@@ -18,22 +18,22 @@ name = "html"
 version = "0.1.0"
 
 [[package]]
-name = "layout"
-version = "0.1.0"
-dependencies = [
- "arena_tree",
- "dom",
- "render_tree",
-]
-
-[[package]]
-name = "parser"
+name = "html_parser"
 version = "0.1.0"
 dependencies = [
  "dom",
  "html",
  "tokenizer",
  "typed-arena",
+]
+
+[[package]]
+name = "layout"
+version = "0.1.0"
+dependencies = [
+ "arena_tree",
+ "dom",
+ "render_tree",
 ]
 
 [[package]]
@@ -49,8 +49,8 @@ name = "sputnik"
 version = "0.1.0"
 dependencies = [
  "dom",
+ "html_parser",
  "layout",
- "parser",
  "render_tree",
  "tokenizer",
  "typed-arena",

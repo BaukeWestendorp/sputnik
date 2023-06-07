@@ -7,6 +7,6 @@ edition.workspace = true
 tokenizer = { path = "../tokenizer"}
 render_tree = { path = "../render_tree"}
 layout = { path = "../layout"}
-parser = { path = "../parser"}
+html_parser = { path = "../html_parser"}
 dom = { path = "../dom"}
 typed-arena = "2.0.2"

@@ -1,5 +1,5 @@
 [package]
-name = "parser"
+name = "html_parser"
 version.workspace = true
 edition.workspace = true
 
