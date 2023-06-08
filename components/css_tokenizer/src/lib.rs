@@ -55,10 +55,9 @@ impl<'a> Tokenizer<'a> {
         let mut tokens = vec![];
 
         loop {
-            let token = self.consume_a_token();
+            let token = self.consume_token();
 
             log_current_token!(token);
-
             match token {
                 Ok(token) => match token {
                     Token::EndOfFile => {
@@ -74,11 +73,28 @@ impl<'a> Tokenizer<'a> {
         Ok(tokens)
     }
 
-    // https://www.w3.org/TR/css-syntax-3/#consume-token
-    fn consume_a_token(&mut self) -> Result<Token, CssParsingError> {
-        // FIXME: Consume comments.
+    fn next_input_code_point(&self) -> Option<char> {
+        self.peek(1)
+    }
 
-        let code_point = self.next_code_point();
+    fn current_input_code_point(&self) -> Option<char> {
+        self.peek(0)
+    }
+
+    fn reconsume_current_input_code_point(&mut self) {
+        self.position -= 1;
+    }
+
+    fn consume_next_code_point(&mut self) -> Option<char> {
+        self.position += 1;
+        self.current_input_code_point()
+    }
+
+    // https://www.w3.org/TR/css-syntax-3/#consume-token
+    fn consume_token(&mut self) -> Result<Token, CssParsingError> {
+        self.consume_comments()?;
+
+        let code_point = self.consume_next_code_point();
 
         match code_point {
             Some(code_point) => match code_point {
@@ -100,13 +116,13 @@ impl<'a> Tokenizer<'a> {
                 '<' => todo!(),
                 '@' => todo!(),
                 '[' => Ok(Token::LeftSquareBracket),
-                '/' => todo!(),
+                '\\' => todo!(),
                 ']' => Ok(Token::RightSquareBracket),
                 '{' => Ok(Token::LeftCurlyBracket),
                 '}' => Ok(Token::RightCurlyBracket),
                 definition!(digit) => todo!(),
                 definition!(ident_start_code_point) => {
-                    self.reconsume_next_current_input_codepoint();
+                    self.reconsume_current_input_code_point();
                     Ok(self.consume_ident_like_token())
                 }
                 _ => Ok(Token::Delim { value: code_point }),
@@ -115,23 +131,34 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn next_code_point(&mut self) -> Option<char> {
-        let code_point = self.input.chars().nth(self.position);
-        self.position += 1;
-        code_point
-    }
+    fn consume_comments(&mut self) -> Result<(), CssParsingError> {
+        loop {
+            let next_two = self.next_two_input_code_points();
 
-    fn consume_as_much_whitespace_as_possible(&mut self) {
-        while self
-            .next_code_point()
-            .is_some_and(|code_point| code_point.is_whitespace())
-        {
-            self.next_code_point();
+            if !(next_two.first == Some('/') && next_two.second == Some('*')) {
+                break;
+            }
+
+            self.consume_next_code_point();
+            self.consume_next_code_point();
+
+            loop {
+                let inner_next_two = self.next_two_input_code_points();
+                if inner_next_two.first.is_none() || inner_next_two.second.is_none() {
+                    return Err(CssParsingError::InvalidEndOfFile);
+                }
+
+                if inner_next_two.first == Some('*') && inner_next_two.second == Some('/') {
+                    self.consume_next_code_point();
+                    self.consume_next_code_point();
+                    break;
+                }
+
+                self.consume_next_code_point();
+            }
         }
-    }
 
-    fn reconsume_next_current_input_codepoint(&mut self) {
-        self.position -= 1;
+        Ok(())
     }
 
     fn consume_ident_like_token(&mut self) -> Token {
@@ -142,9 +169,10 @@ impl<'a> Tokenizer<'a> {
         }
 
         if self
-            .next_code_point()
+            .next_input_code_point()
             .is_some_and(|code_point| code_point == '(')
         {
+            self.consume_next_code_point();
             return Token::Function { value: string };
         }
 
@@ -153,21 +181,53 @@ impl<'a> Tokenizer<'a> {
 
     fn consume_an_ident_sequence(&mut self) -> String {
         let mut result = "".to_string();
-        while let Some(code_point) = self.next_code_point() {
-            match code_point {
-                definition!(ident_code_point) => {
-                    result.push(code_point);
+        loop {
+            if let Some(input) = self.consume_next_code_point() {
+                match input {
+                    definition!(ident_code_point) => {
+                        result.push(input);
+                    }
+                    '\\' => todo!(), // FIXME: This should use a seperate function to check if it really is an escape function.
+                    _ => {
+                        self.reconsume_current_input_code_point();
+                        break;
+                    }
                 }
-                '\\' => todo!(), // FIXME: This should use a seperate function to check if it really is an escape function.
-                _ => {
-                    self.reconsume_next_current_input_codepoint();
-                    return result;
-                }
+            } else {
+                break;
             }
         }
         result
     }
+
+    fn consume_as_much_whitespace_as_possible(&mut self) {
+        while self
+            .next_input_code_point()
+            .is_some_and(|code_point| code_point.is_whitespace())
+        {
+            self.consume_next_code_point();
+        }
+    }
+
+    fn next_two_input_code_points(&self) -> NextTwoInputCodePoints {
+        NextTwoInputCodePoints {
+            first: self.peek(0),
+            second: self.peek(1),
+        }
+    }
+
+    fn peek(&self, offset: usize) -> Option<char> {
+        self.input.chars().nth(self.position + offset)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CssParsingError {}
+pub struct NextTwoInputCodePoints {
+    first: Option<char>,
+    second: Option<char>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CssParsingError {
+    InvalidEndOfFile,
+}
