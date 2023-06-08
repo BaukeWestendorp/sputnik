@@ -65,26 +65,22 @@ impl<'a> Tokenizer<'a> {
         Self { input, position: 0 }
     }
 
-    pub fn tokenize(&mut self) -> Result<Vec<Token>, CssParsingError> {
+    pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens = vec![];
 
         loop {
             let token = self.consume_a_token();
-
             log_current_token!(token);
             match token {
-                Ok(token) => match token {
-                    Token::EndOfFile => {
-                        tokens.push(token);
-                        break;
-                    }
-                    _ => tokens.push(token),
-                },
-                Err(err) => return Err(err),
+                Token::EndOfFile => {
+                    tokens.push(token);
+                    break;
+                }
+                _ => tokens.push(token),
             }
         }
 
-        Ok(tokens)
+        tokens
     }
 
     // https://www.w3.org/TR/css-syntax-3/#next-input-code-point
@@ -108,9 +104,9 @@ impl<'a> Tokenizer<'a> {
     }
 
     // https://www.w3.org/TR/css-syntax-3/#consume-token
-    fn consume_a_token(&mut self) -> Result<Token, CssParsingError> {
+    fn consume_a_token(&mut self) -> Token {
         // Consume comments.
-        self.consume_comments()?;
+        self.consume_comments();
 
         // Consume the next input code point.
         let code_point = self.consume_next_input_code_point();
@@ -122,11 +118,11 @@ impl<'a> Tokenizer<'a> {
                     self.consume_as_much_whitespace_as_possible();
 
                     // Return a <whitespace-token>.
-                    Ok(Token::Whitespace)
+                    Token::Whitespace
                 }
                 '"' => {
                     // Consume a string token and return it.
-                    return Ok(self.consume_a_string_token(None));
+                    return self.consume_a_string_token(None);
                 }
                 '#' => {
                     // If the next input code point is an ident code point
@@ -135,7 +131,9 @@ impl<'a> Tokenizer<'a> {
                         .next_input_code_point()
                         .map_or(false, |c| matches!(c, definition!(ident_code_point)))
                     {
-                        let (first, second, third) = self.next_three_input_code_points()?;
+                        let (first, second, third) = self
+                            .next_three_input_code_points()
+                            .expect("// FIXME: Implement invalid EOF case.");
 
                         // 1. Create a <hash-token>.
                         let hash_token = Token::Hash {
@@ -152,18 +150,18 @@ impl<'a> Tokenizer<'a> {
                         };
 
                         // 4. Return the <hash-token>.
-                        return Ok(hash_token);
+                        return hash_token;
                     }
 
                     // Otherwise, return a <delim-token> with its value set to the current input code point.
-                    Ok(Token::Delim { value: code_point })
+                    Token::Delim { value: code_point }
                 }
                 '\'' => {
                     // Consume a string token and return it.
-                    return Ok(self.consume_a_string_token(None));
+                    return self.consume_a_string_token(None);
                 }
-                '(' => Ok(Token::LeftParenthesis),
-                ')' => Ok(Token::RightParenthesis),
+                '(' => Token::LeftParenthesis,
+                ')' => Token::RightParenthesis,
                 '+' => {
                     // If the input stream starts with a number,
                     if self.stream_starts_with_a_number() {
@@ -174,9 +172,9 @@ impl<'a> Tokenizer<'a> {
                     }
 
                     // Otherwise, return a <delim-token> with its value set to the current input code point.
-                    return Ok(Token::Delim { value: code_point });
+                    return Token::Delim { value: code_point };
                 }
-                ',' => Ok(Token::Comma),
+                ',' => Token::Comma,
                 '-' => {
                     // If the input stream starts with a number,
                     if self.stream_starts_with_a_number() {
@@ -187,11 +185,14 @@ impl<'a> Tokenizer<'a> {
                     }
 
                     // Otherwise, if the next 2 input code points are U+002D HYPHEN-MINUS U+003E GREATER-THAN SIGN (->),
-                    if let ('-', '>') = self.next_two_input_code_points()? {
+                    if let ('-', '>') = self
+                        .next_two_input_code_points()
+                        .expect("// FIXME: Implement invalid EOF case.")
+                    {
                         // consume them and return a <CDC-token>.
                         self.consume_next_input_code_point();
                         self.consume_next_input_code_point();
-                        return Ok(Token::Cdc);
+                        return Token::Cdc;
                     }
 
                     // Otherwise, if the input stream starts with an ident sequence,
@@ -199,11 +200,11 @@ impl<'a> Tokenizer<'a> {
                         // reconsume the current input code point,
                         self.reconsume_current_input_code_point();
                         // consume an ident-like token, and return it.
-                        return Ok(self.consume_an_ident_like_token());
+                        return self.consume_an_ident_like_token();
                     }
 
                     // Otherwise, return a <delim-token> with its value set to the current input code point.
-                    return Ok(Token::Delim { value: code_point });
+                    return Token::Delim { value: code_point };
                 }
                 '.' => {
                     // If the input stream starts with a number,
@@ -215,32 +216,34 @@ impl<'a> Tokenizer<'a> {
                     }
 
                     // Otherwise, return a <delim-token> with its value set to the current input code point.
-                    Ok(Token::Delim { value: code_point })
+                    Token::Delim { value: code_point }
                 }
-                ':' => Ok(Token::Colon),
-                ';' => Ok(Token::Semicolon),
+                ':' => Token::Colon,
+                ';' => Token::Semicolon,
                 '<' => todo!(),
                 '@' => {
                     // If the next 3 input code points would start an ident sequence,
-                    let (first, second, third) = self.next_three_input_code_points()?;
+                    let (first, second, third) = self
+                        .next_three_input_code_points()
+                        .expect("// FIXME: Implement invalid EOF case.");
                     if self.check_if_three_code_points_would_start_an_ident_sequence(
                         first, second, third,
                     ) {
                         // consume an ident sequence,
                         // create an <at-keyword-token> with its value set to the returned value, and return it.
-                        return Ok(Token::AtKeyword {
+                        return Token::AtKeyword {
                             value: self.consume_an_ident_sequence(),
-                        });
+                        };
                     }
 
                     // Otherwise, return a <delim-token> with its value set to the current input code point.
-                    Ok(Token::Delim { value: code_point })
+                    Token::Delim { value: code_point }
                 }
-                '[' => Ok(Token::LeftSquareBracket),
+                '[' => Token::LeftSquareBracket,
                 '\\' => todo!(),
-                ']' => Ok(Token::RightSquareBracket),
-                '{' => Ok(Token::LeftCurlyBracket),
-                '}' => Ok(Token::RightCurlyBracket),
+                ']' => Token::RightSquareBracket,
+                '{' => Token::LeftCurlyBracket,
+                '}' => Token::RightCurlyBracket,
                 definition!(digit) => {
                     // Reconsume the current input code point,
                     self.reconsume_current_input_code_point();
@@ -251,20 +254,20 @@ impl<'a> Tokenizer<'a> {
                     // Reconsume the current input code point,
                     self.reconsume_current_input_code_point();
                     // consume a numeric token, and return it.
-                    Ok(self.consume_an_ident_like_token())
+                    self.consume_an_ident_like_token()
                 }
-                _ => Ok(Token::Delim { value: code_point }),
+                _ => Token::Delim { value: code_point },
             },
-            definition!(eof_code_point) => Ok(Token::EndOfFile),
+            definition!(eof_code_point) => Token::EndOfFile,
         }
     }
 
     // https://www.w3.org/TR/css-syntax-3/#consume-comment
-    fn consume_comments(&mut self) -> Result<(), CssParsingError> {
+    fn consume_comments(&mut self) {
         loop {
             let (first, second) = match self.next_two_input_code_points() {
-                Ok(pair) => pair,
-                Err(_) => break,
+                Some(pair) => pair,
+                None => break,
             };
 
             if !(first == '/' && second == '*') {
@@ -278,7 +281,9 @@ impl<'a> Tokenizer<'a> {
             loop {
                 // up to and including the first U+002A ASTERISK (*) followed by a U+002F SOLIDUS (/),
                 // or up to an EOF code point.
-                let (inner_first, inner_second) = self.next_two_input_code_points()?;
+                let (inner_first, inner_second) = self
+                    .next_two_input_code_points()
+                    .expect("// FIXME: Implement invalid EOF case.");
                 if inner_first == '*' && inner_second == '/' {
                     self.consume_next_input_code_point();
                     self.consume_next_input_code_point();
@@ -288,17 +293,17 @@ impl<'a> Tokenizer<'a> {
                 // Return to the start of this step.
             }
         }
-
-        Ok(())
     }
 
     // https://www.w3.org/TR/css-syntax-3/#consume-numeric-token
-    fn consume_a_numeric_token(&mut self) -> Result<Token, CssParsingError> {
+    fn consume_a_numeric_token(&mut self) -> Token {
         // Consume a number and let number be the result.
-        let number = self.consume_a_number()?;
+        let number = self.consume_a_number();
 
         // If the next 3 input code points would start an ident sequence, then:
-        let (first, second, third) = self.next_three_input_code_points()?;
+        let (first, second, third) = self
+            .next_three_input_code_points()
+            .expect("// FIXME: Implement invalid EOF case.");
         if self.check_if_three_code_points_would_start_an_ident_sequence(first, second, third) {
             // 1. Create a <dimension-token> with the same value and type flag as number, and a unit set initially to the empty string.
             let dimension_token = Token::Dimension {
@@ -309,7 +314,7 @@ impl<'a> Tokenizer<'a> {
             };
 
             // 3. Return the <dimension-token>.
-            return Ok(dimension_token);
+            return dimension_token;
         }
 
         // Otherwise, if the next input code point is U+0025 PERCENTAGE SIGN (%),
@@ -320,16 +325,16 @@ impl<'a> Tokenizer<'a> {
             // consume it.
             self.consume_next_input_code_point();
             // Create a <percentage-token> with the same value as number, and return it.
-            return Ok(Token::Percentage {
+            return Token::Percentage {
                 value: number.value,
-            });
+            };
         }
 
         // Otherwise, create a <number-token> with the same value and type flag as number, and return it.
-        Ok(Token::Number {
+        Token::Number {
             value: number.value,
             number_type: number.number_type,
-        })
+        }
     }
 
     // https://www.w3.org/TR/css-syntax-3/#consume-ident-like-token
@@ -460,8 +465,8 @@ impl<'a> Tokenizer<'a> {
             None => return false,
         };
         let (second, third) = match self.next_two_input_code_points() {
-            Ok(pair) => pair,
-            Err(_) => return false,
+            Some(pair) => pair,
+            None => return false,
         };
 
         self.check_if_three_code_points_would_start_an_ident_sequence(first, second, third)
@@ -504,8 +509,8 @@ impl<'a> Tokenizer<'a> {
             None => return false,
         };
         let (second, third) = match self.next_two_input_code_points() {
-            Ok(pair) => pair,
-            Err(_) => return false,
+            Some(pair) => pair,
+            None => return false,
         };
 
         self.check_if_three_code_points_would_start_a_number(first, second, third)
@@ -540,7 +545,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     // https://www.w3.org/TR/css-syntax-3/#consume-number
-    fn consume_a_number(&mut self) -> Result<CssNumber, CssParsingError> {
+    fn consume_a_number(&mut self) -> CssNumber {
         // 1. Initially set type to "integer". Let repr be the empty string.
         let mut number_type = NumberType::Integer;
         let mut repr = "".to_string();
@@ -574,7 +579,9 @@ impl<'a> Tokenizer<'a> {
         }
 
         // 4. If the next 2 input code points are U+002E FULL STOP (.) followed by a digit, then:
-        let (first, second) = self.next_two_input_code_points()?;
+        let (first, second) = self
+            .next_two_input_code_points()
+            .expect("// FIXME: Implement invalid EOF case.");
         if first == '.' && definition!(digit).contains(&second) {
             // 1. Consume them.
             // 2. Append them to repr.
@@ -591,7 +598,9 @@ impl<'a> Tokenizer<'a> {
         }
 
         // 5. If the next 2 or 3 input code points are
-        let (first, second, third) = self.next_three_input_code_points()?;
+        let (first, second, third) = self
+            .next_three_input_code_points()
+            .expect("// FIXME: Implement invalid EOF case.");
         // U+0045 LATIN CAPITAL LETTER E (E) or U+0065 LATIN SMALL LETTER E (e),
         if first == 'E' || first == 'e' {
             macro_rules! handle_digit {
@@ -632,20 +641,20 @@ impl<'a> Tokenizer<'a> {
         });
 
         // Return value and type.
-        Ok(CssNumber { value, number_type })
+        CssNumber { value, number_type }
     }
 
-    fn next_two_input_code_points(&self) -> Result<(char, char), CssParsingError> {
+    fn next_two_input_code_points(&self) -> Option<(char, char)> {
         match (self.peek(1), self.peek(2)) {
-            (Some(first), Some(second)) => Ok((first, second)),
-            _ => Err(CssParsingError::InvalidEndOfFile),
+            (Some(first), Some(second)) => Some((first, second)),
+            _ => None,
         }
     }
 
-    fn next_three_input_code_points(&self) -> Result<(char, char, char), CssParsingError> {
+    fn next_three_input_code_points(&self) -> Option<(char, char, char)> {
         match (self.peek(1), self.peek(2), self.peek(3)) {
-            (Some(first), Some(second), Some(third)) => Ok((first, second, third)),
-            _ => Err(CssParsingError::InvalidEndOfFile),
+            (Some(first), Some(second), Some(third)) => Some((first, second, third)),
+            _ => None,
         }
     }
 
@@ -667,9 +676,4 @@ impl<'a> Tokenizer<'a> {
 pub struct CssNumber {
     value: f32,
     number_type: NumberType,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CssParsingError {
-    InvalidEndOfFile,
 }
