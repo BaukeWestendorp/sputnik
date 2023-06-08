@@ -11,6 +11,13 @@ name = "css"
 version = "0.1.0"
 
 [[package]]
+name = "css_parser"
+version = "0.1.0"
+dependencies = [
+ "css_tokenizer",
+]
+
+[[package]]
 name = "css_tokenizer"
 version = "0.1.0"
 
@@ -51,9 +58,9 @@ dependencies = [
 name = "sputnik"
 version = "0.1.0"
 dependencies = [
+ "css_parser",
  "dom",
  "html_parser",
- "html_tokenizer",
  "layout",
  "typed-arena",
 ]

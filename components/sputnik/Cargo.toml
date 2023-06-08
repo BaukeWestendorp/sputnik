@@ -4,8 +4,10 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-html_tokenizer = { path = "../html_tokenizer"}
-layout = { path = "../layout"}
-html_parser = { path = "../html_parser"}
 dom = { path = "../dom"}
+html_parser = { path = "../html_parser"}
+css_parser = { path = "../css_parser"}
+layout = { path = "../layout"}
+
+# FIXME: It should be possible to use our own arena_tree crate for this. 
 typed-arena = "2.0.2"
