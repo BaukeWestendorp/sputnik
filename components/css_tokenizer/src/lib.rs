@@ -1,4 +1,4 @@
-use token::{NumberType, Token};
+use token::{HashType, NumberType, Token};
 
 pub mod token;
 
@@ -111,7 +111,36 @@ impl<'a> Tokenizer<'a> {
                     Ok(Token::Whitespace)
                 }
                 '"' => todo!(),
-                '#' => todo!(),
+                '#' => {
+                    // If the next input code point is an ident code point
+                    // FIXME: or the next two input code points are a valid escape, then:
+                    if self
+                        .next_input_code_point()
+                        .map_or(false, |c| matches!(c, definition!(ident_code_point)))
+                    {
+                        let (first, second, third) = self.next_three_input_code_points()?;
+
+                        // 1. Create a <hash-token>.
+                        let hash_token = Token::Hash {
+                            // 2. If the next 3 input code points would start an ident sequence, set the <hash-token>’s type flag to "id".
+                            hash_type: match self
+                                .check_if_three_code_points_would_start_an_ident_sequence(
+                                    first, second, third,
+                                ) {
+                                true => HashType::Id,
+                                false => HashType::Unrestricted,
+                            },
+                            // 3. Consume an ident sequence, and set the <hash-token>’s value to the returned string.
+                            value: self.consume_an_ident_sequence(),
+                        };
+
+                        // 4. Return the <hash-token>.
+                        return Ok(hash_token);
+                    }
+
+                    // Otherwise, return a <delim-token> with its value set to the current input code point.
+                    Ok(Token::Delim { value: code_point })
+                }
                 '\'' => todo!(),
                 '(' => Ok(Token::LeftParenthesis),
                 ')' => Ok(Token::RightParenthesis),
