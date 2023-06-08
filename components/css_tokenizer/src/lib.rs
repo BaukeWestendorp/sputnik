@@ -73,33 +73,41 @@ impl<'a> Tokenizer<'a> {
         Ok(tokens)
     }
 
+    // https://www.w3.org/TR/css-syntax-3/#next-input-code-point
     fn next_input_code_point(&self) -> Option<char> {
         self.peek(1)
     }
 
-    fn current_input_code_point(&self) -> Option<char> {
-        self.peek(0)
-    }
-
-    fn reconsume_current_input_code_point(&mut self) {
-        self.position -= 1;
-    }
-
-    fn consume_next_code_point(&mut self) -> Option<char> {
+    fn consume_next_input_code_point(&mut self) -> Option<char> {
         self.position += 1;
         self.current_input_code_point()
     }
 
+    // https://www.w3.org/TR/css-syntax-3/#current-input-code-point
+    fn current_input_code_point(&self) -> Option<char> {
+        self.peek(0)
+    }
+
+    // https://www.w3.org/TR/css-syntax-3/#reconsume-the-current-input-code-point
+    fn reconsume_current_input_code_point(&mut self) {
+        self.position -= 1;
+    }
+
     // https://www.w3.org/TR/css-syntax-3/#consume-token
     fn consume_a_token(&mut self) -> Result<Token, CssParsingError> {
+        // Consume comments.
         self.consume_comments()?;
 
-        let code_point = self.consume_next_code_point();
+        // Consume the next input code point.
+        let code_point = self.consume_next_input_code_point();
 
         match code_point {
             Some(code_point) => match code_point {
                 definition!(whitespace) => {
+                    // Consume as much whitespace as possible.
                     self.consume_as_much_whitespace_as_possible();
+
+                    // Return a <whitespace-token>.
                     Ok(Token::Whitespace)
                 }
                 '"' => todo!(),
@@ -108,29 +116,44 @@ impl<'a> Tokenizer<'a> {
                 '(' => Ok(Token::LeftParenthesis),
                 ')' => Ok(Token::RightParenthesis),
                 '+' => {
-                    // If the input stream starts with a number, reconsume the current input code point, consume a numeric token, and return it.
-                    if self.stream_starts_with_a_number()? {
+                    // If the input stream starts with a number,
+                    if self.stream_starts_with_a_number() {
+                        // reconsume the current input code point,
                         self.reconsume_current_input_code_point();
+                        // consume a numeric token, and return it.
                         return self.consume_a_numeric_token();
                     }
 
+                    // Otherwise, return a <delim-token> with its value set to the current input code point.
                     return Ok(Token::Delim { value: code_point });
                 }
                 ',' => Ok(Token::Comma),
                 '-' => {
-                    // If the input stream starts with a number, reconsume the current input code point, consume a numeric token, and return it.
-                    if self.stream_starts_with_a_number()? {
+                    // If the input stream starts with a number,
+                    if self.stream_starts_with_a_number() {
+                        // reconsume the current input code point,
                         self.reconsume_current_input_code_point();
+                        // consume a numeric token, and return it.
                         return self.consume_a_numeric_token();
                     }
 
-                    // Otherwise, if the next 2 input code points are U+002D HYPHEN-MINUS U+003E GREATER-THAN SIGN (->), consume them and return a <CDC-token>.
+                    // Otherwise, if the next 2 input code points are U+002D HYPHEN-MINUS U+003E GREATER-THAN SIGN (->),
                     if let ('-', '>') = self.next_two_input_code_points()? {
-                        self.consume_next_code_point();
-                        self.consume_next_code_point();
+                        // consume them and return a <CDC-token>.
+                        self.consume_next_input_code_point();
+                        self.consume_next_input_code_point();
                         return Ok(Token::Cdc);
                     }
 
+                    // Otherwise, if the input stream starts with an ident sequence,
+                    if self.stream_starts_with_an_ident_sequence() {
+                        // reconsume the current input code point,
+                        self.reconsume_current_input_code_point();
+                        // consume an ident-like token, and return it.
+                        return Ok(self.consume_an_ident_like_token());
+                    }
+
+                    // Otherwise, return a <delim-token> with its value set to the current input code point.
                     return Ok(Token::Delim { value: code_point });
                 }
                 '.' => todo!(),
@@ -144,12 +167,16 @@ impl<'a> Tokenizer<'a> {
                 '{' => Ok(Token::LeftCurlyBracket),
                 '}' => Ok(Token::RightCurlyBracket),
                 definition!(digit) => {
+                    // Reconsume the current input code point,
                     self.reconsume_current_input_code_point();
+                    // consume a numeric token, and return it.
                     self.consume_a_numeric_token()
                 }
                 definition!(ident_start_code_point) => {
+                    // Reconsume the current input code point,
                     self.reconsume_current_input_code_point();
-                    Ok(self.consume_a_ident_like_token())
+                    // consume a numeric token, and return it.
+                    Ok(self.consume_an_ident_like_token())
                 }
                 _ => Ok(Token::Delim { value: code_point }),
             },
@@ -157,6 +184,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
+    // https://www.w3.org/TR/css-syntax-3/#consume-comment
     fn consume_comments(&mut self) -> Result<(), CssParsingError> {
         loop {
             let (first, second) = match self.next_two_input_code_points() {
@@ -167,20 +195,22 @@ impl<'a> Tokenizer<'a> {
             if !(first == '/' && second == '*') {
                 break;
             }
+            // If the next two input code point are U+002F SOLIDUS (/) followed by a U+002A ASTERISK (*),
 
-            self.consume_next_code_point();
-            self.consume_next_code_point();
-
+            // consume them and all following code points
+            self.consume_next_input_code_point();
+            self.consume_next_input_code_point();
             loop {
+                // up to and including the first U+002A ASTERISK (*) followed by a U+002F SOLIDUS (/),
+                // or up to an EOF code point.
                 let (inner_first, inner_second) = self.next_two_input_code_points()?;
-
                 if inner_first == '*' && inner_second == '/' {
-                    self.consume_next_code_point();
-                    self.consume_next_code_point();
+                    self.consume_next_input_code_point();
+                    self.consume_next_input_code_point();
                     break;
                 }
-
-                self.consume_next_code_point();
+                self.consume_next_input_code_point();
+                // Return to the start of this step.
             }
         }
 
@@ -194,7 +224,7 @@ impl<'a> Tokenizer<'a> {
 
         // If the next 3 input code points would start an ident sequence, then:
         let (first, second, third) = self.next_three_input_code_points()?;
-        if self.would_start_an_ident_sequence(first, second, third) {
+        if self.check_if_three_code_points_would_start_an_ident_sequence(first, second, third) {
             // 1. Create a <dimension-token> with the same value and type flag as number, and a unit set initially to the empty string.
             let dimension_token = Token::Dimension {
                 value: number.value,
@@ -207,66 +237,165 @@ impl<'a> Tokenizer<'a> {
             return Ok(dimension_token);
         }
 
+        // Otherwise, if the next input code point is U+0025 PERCENTAGE SIGN (%),
         if self
             .next_input_code_point()
             .is_some_and(|code_point| code_point == '%')
         {
-            self.consume_next_code_point();
+            // consume it.
+            self.consume_next_input_code_point();
+            // Create a <percentage-token> with the same value as number, and return it.
             return Ok(Token::Percentage {
                 value: number.value,
             });
         }
 
+        // Otherwise, create a <number-token> with the same value and type flag as number, and return it.
         Ok(Token::Number {
             value: number.value,
             number_type: number.number_type,
         })
     }
 
-    fn consume_a_ident_like_token(&mut self) -> Token {
+    fn consume_an_ident_like_token(&mut self) -> Token {
+        // Consume an ident sequence, and let string be the result.
         let string = self.consume_an_ident_sequence();
 
+        // FIXME: Implement
+        // If string’s value is an ASCII case-insensitive match for "url",
+        // and the next input code point is U+0028 LEFT PARENTHESIS ((),
+        // consume it.
+        // While the next two input code points are whitespace,
+        // consume the next input code point.
+        // If the next one or two input code points are U+0022 QUOTATION MARK ("), U+0027 APOSTROPHE ('),
+        // or whitespace followed by U+0022 QUOTATION MARK (") or U+0027 APOSTROPHE ('),
+        // then create a <function-token> with its value set to string and return it.
+        // Otherwise, consume a url token, and return it.
         if string.eq_ignore_ascii_case("url") {
             todo!()
         }
 
+        // Otherwise, if the next input code point is U+0028 LEFT PARENTHESIS ((),
         if self
             .next_input_code_point()
             .is_some_and(|code_point| code_point == '(')
         {
-            self.consume_next_code_point();
+            // consume it.
+            self.consume_next_input_code_point();
+            // Create a <function-token> with its value set to string and return it.
             return Token::Function { value: string };
         }
 
+        // Otherwise, create an <ident-token> with its value set to string and return it.
         Token::Ident { value: string }
     }
 
-    fn stream_starts_with_a_number(&self) -> Result<bool, CssParsingError> {
-        let (first, second, third) = self.next_three_input_code_points()?;
-
+    // https://www.w3.org/TR/css-syntax-3/#check-if-three-code-points-would-start-an-ident-sequence
+    fn check_if_three_code_points_would_start_an_ident_sequence(
+        &self,
+        first: char,
+        second: char,
+        _third: char,
+    ) -> bool {
+        // Look at the first code point:
         match first {
-            '+' | '-' => match second {
-                definition!(digit) => Ok(true),
-                '.' => Ok(definition!(digit).contains(&third)),
-                _ => Ok(false),
-            },
-            '.' => Ok(definition!(digit).contains(&second)),
-            definition!(digit) => Ok(true),
-            _ => Ok(false),
+            '-' => {
+                // If the second code point is an ident-start code point or a U+002D HYPHEN-MINUS,
+                match second {
+                    definition!(ident_start_code_point) | '-' => true,
+                    // FIXME: or the second and third code points are a valid escape, return true. Otherwise, return false.
+                    '\\' => true,
+                    _ => false,
+                }
+            }
+            definition!(ident_start_code_point) => true,
+            '\\' => {
+                // FIXME: If the first and second code points are a valid escape, return true. Otherwise, return false.
+                true
+            }
+            _ => false,
         }
     }
 
+    fn stream_starts_with_an_ident_sequence(&self) -> bool {
+        // the three code points in question are
+        // the current input code point and
+        // the next two input code points,
+        // in that order.
+        let first = match self.current_input_code_point() {
+            Some(first) => first,
+            None => return false,
+        };
+        let (second, third) = match self.next_two_input_code_points() {
+            Ok(pair) => pair,
+            Err(_) => return false,
+        };
+
+        self.check_if_three_code_points_would_start_an_ident_sequence(first, second, third)
+    }
+
+    // https://www.w3.org/TR/css-syntax-3/#starts-with-a-number
+    fn check_if_three_code_points_would_start_a_number(
+        &self,
+        first: char,
+        second: char,
+        third: char,
+    ) -> bool {
+        // Look at the first code point:
+        match first {
+            '+' | '-' => match second {
+                // If the second code point is a digit, return true.
+                definition!(digit) => true,
+                // Otherwise, if the second code point is a U+002E FULL STOP (.)
+                // and the third code point is a digit, return true.
+                '.' => definition!(digit).contains(&third),
+                _ => false,
+            },
+            '.' => {
+                // If the second code point is a digit, return true.
+                // Otherwise, return false.
+                definition!(digit).contains(&second)
+            }
+            definition!(digit) => true,
+            _ => false,
+        }
+    }
+
+    fn stream_starts_with_a_number(&self) -> bool {
+        // the three code points in question are
+        // the current input code point and
+        // the next two input code points,
+        // in that order.
+        let first = match self.current_input_code_point() {
+            Some(first) => first,
+            None => return false,
+        };
+        let (second, third) = match self.next_two_input_code_points() {
+            Ok(pair) => pair,
+            Err(_) => return false,
+        };
+
+        self.check_if_three_code_points_would_start_a_number(first, second, third)
+    }
+
+    // https://www.w3.org/TR/css-syntax-3/#consume-name
     fn consume_an_ident_sequence(&mut self) -> String {
+        // Let result initially be an empty string.
         let mut result = "".to_string();
+
+        // Repeatedly consume the next input code point from the stream:
         loop {
-            if let Some(input) = self.consume_next_code_point() {
+            if let Some(input) = self.consume_next_input_code_point() {
                 match input {
                     definition!(ident_code_point) => {
+                        // Append the code point to result.
                         result.push(input);
                     }
                     '\\' => todo!(), // FIXME: This should use a seperate function to check if it really is an escape function.
                     _ => {
+                        // Reconsume the current input code point.
                         self.reconsume_current_input_code_point();
+                        // Return result.
                         break;
                     }
                 }
@@ -277,6 +406,7 @@ impl<'a> Tokenizer<'a> {
         result
     }
 
+    // https://www.w3.org/TR/css-syntax-3/#consume-number
     fn consume_a_number(&mut self) -> Result<CssNumber, CssParsingError> {
         // 1. Initially set type to "integer". Let repr be the empty string.
         let mut number_type = NumberType::Integer;
@@ -284,7 +414,7 @@ impl<'a> Tokenizer<'a> {
 
         macro_rules! consume_and_append_to_repr {
             () => {
-                if let Some(code_point) = self.consume_next_code_point() {
+                if let Some(code_point) = self.consume_next_input_code_point() {
                     repr.push(code_point);
                 }
             };
@@ -327,8 +457,9 @@ impl<'a> Tokenizer<'a> {
             }
         }
 
-        // 5. If the next 2 or 3 input code points are U+0045 LATIN CAPITAL LETTER E (E) or U+0065 LATIN SMALL LETTER E (e), optionally followed by U+002D HYPHEN-MINUS (-) or U+002B PLUS SIGN (+), followed by a digit, then:
+        // 5. If the next 2 or 3 input code points are
         let (first, second, third) = self.next_three_input_code_points()?;
+        // U+0045 LATIN CAPITAL LETTER E (E) or U+0065 LATIN SMALL LETTER E (e),
         if first == 'E' || first == 'e' {
             macro_rules! handle_digit {
                 ($amount:literal) => {
@@ -348,6 +479,8 @@ impl<'a> Tokenizer<'a> {
                 };
             }
 
+            // optionally followed by U+002D HYPHEN-MINUS (-) or U+002B PLUS SIGN (+),
+            // followed by a digit, then:
             if second == '-' || second == '+' {
                 if definition!(digit).contains(&third) {
                     handle_digit!(3);
@@ -365,38 +498,8 @@ impl<'a> Tokenizer<'a> {
             )
         });
 
+        // Return value and type.
         Ok(CssNumber { value, number_type })
-    }
-
-    fn consume_as_much_whitespace_as_possible(&mut self) {
-        while self
-            .next_input_code_point()
-            .is_some_and(|code_point| code_point.is_whitespace())
-        {
-            self.consume_next_code_point();
-        }
-    }
-
-    // https://www.w3.org/TR/css-syntax-3/#check-if-three-code-points-would-start-an-ident-sequence
-    fn would_start_an_ident_sequence(&self, first: char, second: char, _third: char) -> bool {
-        match first {
-            '-' => {
-                match second {
-                    definition!(ident_start_code_point) | '-' => true,
-                    '\\' => {
-                        // FIXME: this should check for the second and third code point and check if it is a valid escape sequence
-                        true
-                    }
-                    _ => false,
-                }
-            }
-            definition!(ident_start_code_point) => true,
-            '\\' => {
-                // FIXME: this should check for the second and third code point and check if it is a valid escape sequence
-                true
-            }
-            _ => false,
-        }
     }
 
     fn next_two_input_code_points(&self) -> Result<(char, char), CssParsingError> {
@@ -415,6 +518,15 @@ impl<'a> Tokenizer<'a> {
 
     fn peek(&self, offset: usize) -> Option<char> {
         self.input.chars().nth(self.position + offset)
+    }
+
+    fn consume_as_much_whitespace_as_possible(&mut self) {
+        while self
+            .next_input_code_point()
+            .is_some_and(|code_point| code_point.is_whitespace())
+        {
+            self.consume_next_input_code_point();
+        }
     }
 }
 
