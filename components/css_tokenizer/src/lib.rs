@@ -200,7 +200,22 @@ impl<'a> Tokenizer<'a> {
                 ':' => Ok(Token::Colon),
                 ';' => Ok(Token::Semicolon),
                 '<' => todo!(),
-                '@' => todo!(),
+                '@' => {
+                    // If the next 3 input code points would start an ident sequence,
+                    let (first, second, third) = self.next_three_input_code_points()?;
+                    if self.check_if_three_code_points_would_start_an_ident_sequence(
+                        first, second, third,
+                    ) {
+                        // consume an ident sequence,
+                        // create an <at-keyword-token> with its value set to the returned value, and return it.
+                        return Ok(Token::AtKeyword {
+                            value: self.consume_an_ident_sequence(),
+                        });
+                    }
+
+                    // Otherwise, return a <delim-token> with its value set to the current input code point.
+                    Ok(Token::Delim { value: code_point })
+                }
                 '[' => Ok(Token::LeftSquareBracket),
                 '\\' => todo!(),
                 ']' => Ok(Token::RightSquareBracket),
