@@ -185,7 +185,18 @@ impl<'a> Tokenizer<'a> {
                     // Otherwise, return a <delim-token> with its value set to the current input code point.
                     return Ok(Token::Delim { value: code_point });
                 }
-                '.' => todo!(),
+                '.' => {
+                    // If the input stream starts with a number,
+                    if self.stream_starts_with_a_number() {
+                        // reconsume the current input code point,
+                        self.reconsume_current_input_code_point();
+                        // consume a numeric token, and return it.
+                        return self.consume_a_numeric_token();
+                    }
+
+                    // Otherwise, return a <delim-token> with its value set to the current input code point.
+                    Ok(Token::Delim { value: code_point })
+                }
                 ':' => Ok(Token::Colon),
                 ';' => Ok(Token::Semicolon),
                 '<' => todo!(),
