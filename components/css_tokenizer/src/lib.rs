@@ -40,6 +40,20 @@ macro_rules! log_current_token {
     };
 }
 
+macro_rules! log_parse_error {
+    ($message:expr) => {
+        eprintln!(
+            "\x1b[31m[Parser Error ({}:{})]: {}\x1b[0m",
+            file!(),
+            line!(),
+            $message
+        );
+    };
+    () => {
+        eprintln!("\x1b[31m[Parser Error ({}:{})]\x1b[0m", file!(), line!());
+    };
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tokenizer<'a> {
     input: &'a str,
@@ -110,7 +124,10 @@ impl<'a> Tokenizer<'a> {
                     // Return a <whitespace-token>.
                     Ok(Token::Whitespace)
                 }
-                '"' => todo!(),
+                '"' => {
+                    // Consume a string token and return it.
+                    return Ok(self.consume_a_string_token(None));
+                }
                 '#' => {
                     // If the next input code point is an ident code point
                     // FIXME: or the next two input code points are a valid escape, then:
@@ -141,7 +158,10 @@ impl<'a> Tokenizer<'a> {
                     // Otherwise, return a <delim-token> with its value set to the current input code point.
                     Ok(Token::Delim { value: code_point })
                 }
-                '\'' => todo!(),
+                '\'' => {
+                    // Consume a string token and return it.
+                    return Ok(self.consume_a_string_token(None));
+                }
                 '(' => Ok(Token::LeftParenthesis),
                 ')' => Ok(Token::RightParenthesis),
                 '+' => {
@@ -312,6 +332,7 @@ impl<'a> Tokenizer<'a> {
         })
     }
 
+    // https://www.w3.org/TR/css-syntax-3/#consume-ident-like-token
     fn consume_an_ident_like_token(&mut self) -> Token {
         // Consume an ident sequence, and let string be the result.
         let string = self.consume_an_ident_sequence();
@@ -343,6 +364,63 @@ impl<'a> Tokenizer<'a> {
 
         // Otherwise, create an <ident-token> with its value set to string and return it.
         Token::Ident { value: string }
+    }
+
+    // https://www.w3.org/TR/css-syntax-3/#consume-string-token
+    fn consume_a_string_token(&mut self, ending_code_point: Option<char>) -> Token {
+        // This algorithm may be called with an ending code point,
+        // which denotes the code point that ends the string.
+        // If an ending code point is not specified,
+        // the current input code point is used.
+        let ending_code_point = match ending_code_point {
+            Some(ending_code_point) => Some(ending_code_point),
+            None => self.current_input_code_point(),
+        };
+
+        // Initially create a <string-token> with its value set to the empty string.
+        let mut string_token = Token::String {
+            value: "".to_string(),
+        };
+
+        loop {
+            // Consume the next input code point.
+            let code_point = self.consume_next_input_code_point();
+
+            match code_point {
+                Some(code_point) if Some(code_point) == ending_code_point => {
+                    // Return the <string-token>.
+                    return string_token;
+                }
+                None => {
+                    // This is a parse error.
+                    log_parse_error!("EOF in string token");
+                    // Return the <string-token>.
+                    return string_token;
+                }
+                Some('\n') => {
+                    // This is a parse error.
+                    log_parse_error!("newline in string token");
+                    // Reconsume the current input code point,
+                    self.reconsume_current_input_code_point();
+                    // create a <bad-string-token>, and return it.
+                    return Token::BadString;
+                }
+                Some('\\') => {
+                    // FIXME: If the next input code point is EOF, do nothing.
+                    // FIXME: Otherwise, if the next input code point is a newline, consume it.
+                    // FIXME: Otherwise, (the stream starts with a valid escape) consume an escaped code point and append the returned code point to the <string-token>’s value.
+                    todo!()
+                }
+                _ => {
+                    // Append the current input code point to the <string-token>’s value.
+                    if let Token::String { value } = &mut string_token {
+                        value.push(
+                            code_point.expect("We have already checked for None in the EOF case"),
+                        );
+                    }
+                }
+            }
+        }
     }
 
     // https://www.w3.org/TR/css-syntax-3/#check-if-three-code-points-would-start-an-ident-sequence
