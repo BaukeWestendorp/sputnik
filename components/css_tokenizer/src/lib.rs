@@ -133,7 +133,7 @@ impl<'a> Tokenizer<'a> {
                     {
                         let (first, second, third) = self
                             .next_three_input_code_points()
-                            .expect("// FIXME: Implement invalid EOF case.");
+                            .expect("FIXME: Implement invalid EOF case.");
 
                         // 1. Create a <hash-token>.
                         let hash_token = Token::Hash {
@@ -187,7 +187,7 @@ impl<'a> Tokenizer<'a> {
                     // Otherwise, if the next 2 input code points are U+002D HYPHEN-MINUS U+003E GREATER-THAN SIGN (->),
                     if let ('-', '>') = self
                         .next_two_input_code_points()
-                        .expect("// FIXME: Implement invalid EOF case.")
+                        .expect("FIXME: Implement invalid EOF case.")
                     {
                         // consume them and return a <CDC-token>.
                         self.consume_next_input_code_point();
@@ -225,7 +225,7 @@ impl<'a> Tokenizer<'a> {
                     // If the next 3 input code points would start an ident sequence,
                     let (first, second, third) = self
                         .next_three_input_code_points()
-                        .expect("// FIXME: Implement invalid EOF case.");
+                        .expect("FIXME: Implement invalid EOF case.");
                     if self.check_if_three_code_points_would_start_an_ident_sequence(
                         first, second, third,
                     ) {
@@ -283,7 +283,7 @@ impl<'a> Tokenizer<'a> {
                 // or up to an EOF code point.
                 let (inner_first, inner_second) = self
                     .next_two_input_code_points()
-                    .expect("// FIXME: Implement invalid EOF case.");
+                    .expect("FIXME: Implement invalid EOF case.");
                 if inner_first == '*' && inner_second == '/' {
                     self.consume_next_input_code_point();
                     self.consume_next_input_code_point();
@@ -303,7 +303,7 @@ impl<'a> Tokenizer<'a> {
         // If the next 3 input code points would start an ident sequence, then:
         let (first, second, third) = self
             .next_three_input_code_points()
-            .expect("// FIXME: Implement invalid EOF case.");
+            .expect("FIXME: Implement invalid EOF case.");
         if self.check_if_three_code_points_would_start_an_ident_sequence(first, second, third) {
             // 1. Create a <dimension-token> with the same value and type flag as number, and a unit set initially to the empty string.
             let dimension_token = Token::Dimension {
@@ -581,7 +581,7 @@ impl<'a> Tokenizer<'a> {
         // 4. If the next 2 input code points are U+002E FULL STOP (.) followed by a digit, then:
         let (first, second) = self
             .next_two_input_code_points()
-            .expect("// FIXME: Implement invalid EOF case.");
+            .expect("FIXME: Implement invalid EOF case.");
         if first == '.' && definition!(digit).contains(&second) {
             // 1. Consume them.
             // 2. Append them to repr.
@@ -600,7 +600,7 @@ impl<'a> Tokenizer<'a> {
         // 5. If the next 2 or 3 input code points are
         let (first, second, third) = self
             .next_three_input_code_points()
-            .expect("// FIXME: Implement invalid EOF case.");
+            .expect("FIXME: Implement invalid EOF case.");
         // U+0045 LATIN CAPITAL LETTER E (E) or U+0065 LATIN SMALL LETTER E (e),
         if first == 'E' || first == 'e' {
             macro_rules! handle_digit {
