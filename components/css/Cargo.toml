@@ -1,5 +1,5 @@
 [package]
-name = "tokenizer"
+name = "css"
 version.workspace = true
 edition.workspace = true
 

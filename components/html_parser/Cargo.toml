@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-tokenizer = { path = "../tokenizer" }
+html_tokenizer = { path = "../html_tokenizer" }
 dom = { path = "../dom" }
 html = { path = "../html" }
 typed-arena = "2.0.2"

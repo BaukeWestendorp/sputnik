@@ -1,12 +1,7 @@
 use std::cell::{Cell, RefCell};
 
-use dom::element::Element;
-use dom::node::{Node, NodeLink, NodeRef, NodeType};
-use html::namespace::Namespace;
-use html_tokenizer::{Token, Tokenizer};
 use tree_construction::list_of_active_formatting_elements::ListOfActiveFormattingElements;
 use tree_construction::stack_of_open_elements::StackOfOpenElements;
-use typed_arena::Arena;
 
 pub(crate) mod tree_construction;
 
@@ -61,7 +56,7 @@ enum GenericParsingAlgorithm {
 pub struct Parser<'a> {
     arena: Arena<Node<'a>>,
     tokenizer: RefCell<Tokenizer>,
-    new_tokenizer_state: Cell<Option<html_tokenizer::State>>,
+    new_tokenizer_state: Cell<Option<tokenizer::State>>,
     document: Node<'a>,
     insertion_mode: Cell<InsertionMode>,
     original_insertion_mode: Cell<Option<InsertionMode>>,
@@ -137,10 +132,9 @@ impl<'a> Parser<'a> {
         match algorithm {
             GenericParsingAlgorithm::RawText => self
                 .new_tokenizer_state
-                .set(Some(html_tokenizer::State::RawText)),
+                .set(Some(tokenizer::State::RawText)),
             GenericParsingAlgorithm::RcData => {
-                self.new_tokenizer_state
-                    .set(Some(html_tokenizer::State::RcData));
+                self.new_tokenizer_state.set(Some(tokenizer::State::RcData));
             }
         }
 

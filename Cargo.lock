@@ -7,6 +7,10 @@ name = "arena_tree"
 version = "0.1.0"
 
 [[package]]
+name = "css"
+version = "0.1.0"
+
+[[package]]
 name = "css_tokenizer"
 version = "0.1.0"
 
@@ -27,9 +31,13 @@ version = "0.1.0"
 dependencies = [
  "dom",
  "html",
- "tokenizer",
+ "html_tokenizer",
  "typed-arena",
 ]
+
+[[package]]
+name = "html_tokenizer"
+version = "0.1.0"
 
 [[package]]
 name = "layout"
@@ -43,17 +51,12 @@ dependencies = [
 name = "sputnik"
 version = "0.1.0"
 dependencies = [
- "css_tokenizer",
  "dom",
  "html_parser",
+ "html_tokenizer",
  "layout",
- "tokenizer",
  "typed-arena",
 ]
-
-[[package]]
-name = "tokenizer"
-version = "0.1.0"
 
 [[package]]
 name = "typed-arena"
