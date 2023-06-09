@@ -1,8 +1,0 @@
-[package]
-name = "layout"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-arena_tree = { path = "../arena_tree" }
-dom = { path = "../dom" }

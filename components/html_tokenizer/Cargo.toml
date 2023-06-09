@@ -1,6 +1,0 @@
-[package]
-name = "html_tokenizer"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]

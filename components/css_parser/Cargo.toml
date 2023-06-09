@@ -1,7 +1,0 @@
-[package]
-name = "css_parser"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-css_tokenizer = { path = "../css_tokenizer" }

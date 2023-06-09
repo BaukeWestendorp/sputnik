@@ -1,6 +1,0 @@
-[package]
-name = "arena_tree"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]

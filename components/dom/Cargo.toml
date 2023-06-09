@@ -1,7 +1,0 @@
-[package]
-name = "dom"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-html = { path = "../html" }

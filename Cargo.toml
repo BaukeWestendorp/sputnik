@@ -1,7 +1,7 @@
-[workspace.package]
+[package]
 name = "sputnik"
 version = "0.1.0"
 edition = "2021"
 
-[workspace]
-members = ["components/*"]
+[dependencies]
+typed-arena = "2.0.2"
