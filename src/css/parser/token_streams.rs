@@ -22,7 +22,7 @@ pub struct TokenStream {
     marked_indexes: RefCell<Vec<usize>>,
 }
 
-impl<'a> TokenStream {
+impl TokenStream {
     pub fn new(tokens: Vec<Token>) -> TokenStream {
         TokenStream {
             tokens,

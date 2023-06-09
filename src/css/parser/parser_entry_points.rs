@@ -6,7 +6,7 @@ use super::Parser;
 /// 5.4. Parser Entry Points
 ///
 /// https://www.w3.org/TR/css-syntax-3/#parser-entry-points
-impl<'a> Parser {
+impl Parser {
     /// 5.4.3. Parse a stylesheet
     ///
     /// "Parse a stylesheet" is intended to be the normal parser entry point, for parsing stylesheets.

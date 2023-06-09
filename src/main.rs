@@ -22,7 +22,6 @@ fn main() {
 
     if path.ends_with(".css") {
         parse_css_file(&path);
-        return;
     }
 }
 
@@ -52,11 +51,11 @@ fn parse_html_file(path: &str) {
 fn parse_css_file(path: &str) {
     let css = std::fs::read_to_string(path.clone()).unwrap();
     let mut tokenizer = css::tokenizer::Tokenizer::new(css.as_str());
-    let tokens = tokenizer.tokenize();
-    let input = css::parser::token_streams::TokenStream::new(tokens);
 
     eprintln!("Started parsing '{}'", path);
     let before = Instant::now();
+    let tokens = tokenizer.tokenize();
+    let input = css::parser::token_streams::TokenStream::new(tokens);
     let parsed_stylesheet = css::parser::Parser::parse_a_stylesheet(&input, None);
     let after = Instant::now();
     let time = after.duration_since(before);

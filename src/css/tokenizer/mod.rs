@@ -1,3 +1,5 @@
+#![allow(clippy::manual_is_ascii_check)]
+
 pub use token::{HashType, NumberType, Token};
 
 pub mod token;
@@ -125,7 +127,7 @@ impl<'a> Tokenizer<'a> {
                 }
                 '"' => {
                     // Consume a string token and return it.
-                    return self.consume_a_string_token(None);
+                    self.consume_a_string_token(None)
                 }
                 '#' => {
                     // If the next input code point is an ident code point
@@ -161,7 +163,7 @@ impl<'a> Tokenizer<'a> {
                 }
                 '\'' => {
                     // Consume a string token and return it.
-                    return self.consume_a_string_token(None);
+                    self.consume_a_string_token(None)
                 }
                 '(' => Token::LeftParenthesis,
                 ')' => Token::RightParenthesis,
@@ -175,7 +177,7 @@ impl<'a> Tokenizer<'a> {
                     }
 
                     // Otherwise, return a <delim-token> with its value set to the current input code point.
-                    return Token::Delim { value: code_point };
+                    Token::Delim { value: code_point }
                 }
                 ',' => Token::Comma,
                 '-' => {
@@ -207,7 +209,7 @@ impl<'a> Tokenizer<'a> {
                     }
 
                     // Otherwise, return a <delim-token> with its value set to the current input code point.
-                    return Token::Delim { value: code_point };
+                    Token::Delim { value: code_point }
                 }
                 '.' => {
                     // If the input stream starts with a number,
@@ -267,16 +269,12 @@ impl<'a> Tokenizer<'a> {
 
     // https://www.w3.org/TR/css-syntax-3/#consume-comment
     fn consume_comments(&mut self) {
-        loop {
-            let (first, second) = match self.next_two_input_code_points() {
-                Some(pair) => pair,
-                None => break,
-            };
-
+        while let Some((first, second)) = self.next_two_input_code_points() {
+            // If the next two input code point are U+002F SOLIDUS (/) followed by a U+002A ASTERISK (*),
             if !(first == '/' && second == '*') {
                 break;
+                // It returns nothing.
             }
-            // If the next two input code point are U+002F SOLIDUS (/) followed by a U+002A ASTERISK (*),
 
             // consume them and all following code points
             self.consume_next_input_code_point();
@@ -525,23 +523,19 @@ impl<'a> Tokenizer<'a> {
         let mut result = "".to_string();
 
         // Repeatedly consume the next input code point from the stream:
-        loop {
-            if let Some(input) = self.consume_next_input_code_point() {
-                match input {
-                    definition!(ident_code_point) => {
-                        // Append the code point to result.
-                        result.push(input);
-                    }
-                    '\\' => todo!(), // FIXME: This should use a seperate function to check if it really is an escape function.
-                    _ => {
-                        // Reconsume the current input code point.
-                        self.reconsume_current_input_code_point();
-                        // Return result.
-                        break;
-                    }
+        while let Some(input) = self.consume_next_input_code_point() {
+            match input {
+                definition!(ident_code_point) => {
+                    // Append the code point to result.
+                    result.push(input);
                 }
-            } else {
-                break;
+                '\\' => todo!(), // FIXME: This should use a seperate function to check if it really is an escape function.
+                _ => {
+                    // Reconsume the current input code point.
+                    self.reconsume_current_input_code_point();
+                    // Return result.
+                    break;
+                }
             }
         }
         result
